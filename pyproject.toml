@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pysumoapi"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Python client library for the Sumo API"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -80,14 +80,14 @@ asyncio_mode = "strict"
 
 [tool.ruff]
 line-length = 88
-target-version = "py38"
+target-version = "0.1.2"
 select = ["E", "F", "B", "I", "N", "UP", "PL", "RUF"]
 
 [tool.ruff.isort]
 known-first-party = ["pysumoapi"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "0.1.2"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

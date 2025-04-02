@@ -2,9 +2,9 @@
 
 [![PyPI version](https://badge.fury.io/py/pysumoapi.svg)](https://badge.fury.io/py/pysumoapi)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pysumoapi.svg)](https://pypi.org/project/pysumoapi/)
-[![License](https://img.shields.io/github/license/yourusername/pysumoapi.svg)](https://github.com/yourusername/pysumoapi/blob/main/LICENSE)
-[![Tests](https://github.com/yourusername/pysumoapi/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/pysumoapi/actions/workflows/test.yml)
-[![Codecov](https://codecov.io/gh/yourusername/pysumoapi/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/pysumoapi)
+[![License](https://img.shields.io/github/license/colebrumley/pysumoapi.svg)](https://github.com/colebrumley/pysumoapi/blob/main/LICENSE)
+[![Tests](https://github.com/colebrumley/pysumoapi/actions/workflows/test.yml/badge.svg)](https://github.com/colebrumley/pysumoapi/actions/workflows/test.yml)
+[![Codecov](https://codecov.io/gh/colebrumley/pysumoapi/branch/main/graph/badge.svg)](https://codecov.io/gh/colebrumley/pysumoapi)
 
 A Python client library for the [Sumo API](https://sumo-api.com), providing easy access to sumo wrestling data including rikishi information, statistics, shikona history, measurements, and rank history.
 
@@ -117,7 +117,7 @@ See the [examples](examples/) directory for more detailed examples:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pysumoapi.git
+git clone https://github.com/colebrumley/pysumoapi.git
 cd pysumoapi
 
 # Create a virtual environment

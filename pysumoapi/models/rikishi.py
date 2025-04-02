@@ -1,20 +1,20 @@
 """Models for rikishi data."""
+
 from datetime import datetime
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from zoneinfo import ZoneInfo
 
 
 class Rikishi(BaseModel):
     """Model representing a sumo wrestler."""
+
     model_config = ConfigDict(
         populate_by_name=True,
-        json_encoders={
-            datetime: lambda dt: dt.astimezone(ZoneInfo("UTC")).isoformat()
-        }
+        json_encoders={datetime: lambda dt: dt.astimezone(ZoneInfo("UTC")).isoformat()},
     )
-    
+
     id: int
     sumodb_id: int = Field(alias="sumodbId")
     nsk_id: Optional[int] = Field(alias="nskId", default=0)
@@ -33,7 +33,13 @@ class Rikishi(BaseModel):
 
 class RikishiList(BaseModel):
     """Model representing a list of rikishi with pagination."""
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={datetime: lambda dt: dt.astimezone(ZoneInfo("UTC")).isoformat()},
+    )
+
     limit: int
     skip: int
     total: int
-    records: List[Rikishi] 
+    records: List[Rikishi]

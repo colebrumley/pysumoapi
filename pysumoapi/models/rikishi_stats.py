@@ -1,11 +1,11 @@
 """Models for rikishi statistics."""
-from typing import Dict
 
 from pydantic import BaseModel, Field
 
 
 class DivisionStats(BaseModel):
     """Model representing statistics by division."""
+
     Jonokuchi: int = 0
     Jonidan: int = 0
     Sandanme: int = 0
@@ -16,6 +16,7 @@ class DivisionStats(BaseModel):
 
 class Sansho(BaseModel):
     """Model representing special prizes (sansho)."""
+
     Gino_sho: int = Field(alias="Gino-sho", default=0)
     Kanto_sho: int = Field(alias="Kanto-sho", default=0)
     Shukun_sho: int = Field(alias="Shukun-sho", default=0)
@@ -23,6 +24,7 @@ class Sansho(BaseModel):
 
 class RikishiStats(BaseModel):
     """Model representing comprehensive statistics for a rikishi."""
+
     basho: int
     total_matches: int = Field(alias="totalMatches")
     total_wins: int = Field(alias="totalWins")
@@ -35,4 +37,4 @@ class RikishiStats(BaseModel):
     total_by_division: DivisionStats = Field(alias="totalByDivision")
     wins_by_division: DivisionStats = Field(alias="winsByDivision")
     yusho_by_division: DivisionStats = Field(alias="yushoByDivision")
-    sansho: Sansho 
+    sansho: Sansho

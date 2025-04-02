@@ -32,6 +32,7 @@ dependencies = [
     "httpx>=0.24.0",
     "pydantic>=2.0.0",
     "requests>=2.32.3",
+    "certifi>=2024.2.0",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +42,8 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.2.0",
     "mypy>=1.8.0",
+    "black>=24.2.0",
+    "build>=1.1.1",
 ]
 
 [project.urls]
@@ -54,7 +57,7 @@ Changelog = "https://github.com/colebrumley/pysumoapi/blob/main/CHANGELOG.md"
 pysumoapi = "pysumoapi.cli:main"
 
 [tool.hatch.build]
-packages = ["src/pysumoapi"]
+packages = ["pysumoapi"]
 include = [
     "LICENSE",
     "README.md",
@@ -62,7 +65,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pysumoapi"]
+packages = ["pysumoapi"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -72,7 +75,7 @@ include = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["."]
 asyncio_mode = "strict"
 
 [tool.ruff]
@@ -88,4 +91,14 @@ python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-check_untyped_defs = true 
+check_untyped_defs = true
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+include = '\.pyi?$' 
+
+[dependency-groups]
+dev = [
+    "black>=24.8.0",
+]

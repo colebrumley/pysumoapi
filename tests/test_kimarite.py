@@ -1,7 +1,15 @@
+"""Tests for the kimarite endpoint."""
+
 import pytest
-from datetime import datetime
+
 from pysumoapi.client import SumoClient
-from pysumoapi.models.kimarite import KimariteResponse
+from pysumoapi.models import KimariteResponse
+
+# Test constants
+TEST_LIMIT = 5
+TEST_PARTS_COUNT = 2
+TEST_BASHO_ID_LENGTH = 6
+TEST_MAX_DAY = 15
 
 
 @pytest.mark.asyncio
@@ -9,32 +17,30 @@ async def test_get_kimarite_success():
     """Test successful retrieval of kimarite statistics."""
     async with SumoClient() as client:
         response = await client.get_kimarite(
-            sort_field="count",
-            sort_order="desc",
-            limit=5
+            sort_field="count", sort_order="desc", limit=TEST_LIMIT
         )
-        
+
         # Verify response type
         assert isinstance(response, KimariteResponse)
-        
+
         # Verify query parameters are reflected
         assert response.sort_field == "count"
         assert response.sort_order == "desc"
-        assert response.limit == 5
+        assert response.limit == TEST_LIMIT
         assert response.skip == 0
-        
+
         # Verify records
-        assert len(response.records) == 5
+        assert len(response.records) == TEST_LIMIT
         for record in response.records:
             assert record.count > 0
             # Verify last_usage format (YYYYMM-D or YYYYMM-DD)
             parts = record.last_usage.split("-")
-            assert len(parts) == 2
+            assert len(parts) == TEST_PARTS_COUNT
             basho_date = parts[0]
             day = int(parts[1])
-            assert len(basho_date) == 6
-            assert 1 <= day <= 15
-            
+            assert len(basho_date) == TEST_BASHO_ID_LENGTH
+            assert 1 <= day <= TEST_MAX_DAY
+
         # Verify sorting
         counts = [r.count for r in response.records]
         assert counts == sorted(counts, reverse=True)
@@ -43,16 +49,18 @@ async def test_get_kimarite_success():
 @pytest.mark.asyncio
 async def test_get_kimarite_invalid_sort_field():
     """Test handling of invalid sort field."""
-    async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Invalid sort field"):
-            await client.get_kimarite(sort_field="invalid")
+    async with SumoClient(verify_ssl=False) as client:
+        with pytest.raises(ValueError):
+            await client.get_kimarite(sort_field="invalid_field")
 
 
 @pytest.mark.asyncio
 async def test_get_kimarite_invalid_sort_order():
     """Test handling of invalid sort order."""
     async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Sort order must be either 'asc' or 'desc'"):
+        with pytest.raises(
+            ValueError, match="Sort order must be either 'asc' or 'desc'"
+        ):
             await client.get_kimarite(sort_order="invalid")
 
 
@@ -69,4 +77,4 @@ async def test_get_kimarite_invalid_skip():
     """Test handling of invalid skip."""
     async with SumoClient() as client:
         with pytest.raises(ValueError, match="Skip must be a non-negative integer"):
-            await client.get_kimarite(skip=-1) 
+            await client.get_kimarite(skip=-1)

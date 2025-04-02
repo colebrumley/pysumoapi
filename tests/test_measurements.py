@@ -1,6 +1,12 @@
+"""Tests for the measurements endpoint."""
+
 import pytest
+
 from pysumoapi.client import SumoClient
-from pysumoapi.models.measurements import Measurement
+from pysumoapi.models import Measurement
+
+# Test constants
+TEST_RIKISHI_ID = 1511
 
 
 @pytest.mark.asyncio
@@ -8,14 +14,13 @@ async def test_get_measurements_by_basho_success():
     """Test successful retrieval of measurements by basho."""
     async with SumoClient() as client:
         measurements = await client.get_measurements(
-            basho_id="196001",
-            sort_order="desc"
+            basho_id="196001", sort_order="desc"
         )
-        
+
         # Verify response type
         assert isinstance(measurements, list)
         assert all(isinstance(m, Measurement) for m in measurements)
-        
+
         # Verify records
         assert len(measurements) > 0
         for measurement in measurements:
@@ -23,7 +28,7 @@ async def test_get_measurements_by_basho_success():
             assert measurement.height > 0
             assert measurement.weight > 0
             assert measurement.id == f"{measurement.basho_id}-{measurement.rikishi_id}"
-            
+
         # Verify sorting (by basho)
         basho_ids = [m.basho_id for m in measurements]
         assert basho_ids == sorted(basho_ids, reverse=True)
@@ -34,22 +39,21 @@ async def test_get_measurements_by_rikishi_success():
     """Test successful retrieval of measurements by rikishi."""
     async with SumoClient() as client:
         measurements = await client.get_measurements(
-            rikishi_id=1511,
-            sort_order="asc"
+            rikishi_id=TEST_RIKISHI_ID, sort_order="asc"
         )
-        
+
         # Verify response type
         assert isinstance(measurements, list)
         assert all(isinstance(m, Measurement) for m in measurements)
-        
+
         # Verify records
         assert len(measurements) > 0
         for measurement in measurements:
-            assert measurement.rikishi_id == 1511
+            assert measurement.rikishi_id == TEST_RIKISHI_ID
             assert measurement.height > 0
             assert measurement.weight > 0
             assert measurement.id == f"{measurement.basho_id}-{measurement.rikishi_id}"
-            
+
         # Verify sorting (by basho)
         basho_ids = [m.basho_id for m in measurements]
         assert basho_ids == sorted(basho_ids)
@@ -75,7 +79,9 @@ async def test_get_measurements_invalid_rikishi_id():
 async def test_get_measurements_invalid_sort_order():
     """Test handling of invalid sort order."""
     async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Sort order must be either 'asc' or 'desc'"):
+        with pytest.raises(
+            ValueError, match="Sort order must be either 'asc' or 'desc'"
+        ):
             await client.get_measurements(basho_id="196001", sort_order="invalid")
 
 
@@ -83,5 +89,7 @@ async def test_get_measurements_invalid_sort_order():
 async def test_get_measurements_no_parameters():
     """Test handling of no parameters provided."""
     async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Either basho_id or rikishi_id must be provided"):
-            await client.get_measurements() 
+        with pytest.raises(
+            ValueError, match="Either basho_id or rikishi_id must be provided"
+        ):
+            await client.get_measurements()

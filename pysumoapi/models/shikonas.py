@@ -1,9 +1,11 @@
 from typing import List
+
 from pydantic import BaseModel, Field
 
 
 class Shikona(BaseModel):
     """Model for a single shikona record."""
+
     id: str = Field(..., description="Shikona ID in format YYYYMM-rikishiId")
     basho_id: str = Field(..., alias="bashoId", description="Basho ID in YYYYMM format")
     rikishi_id: int = Field(..., alias="rikishiId", description="Rikishi ID")
@@ -12,4 +14,4 @@ class Shikona(BaseModel):
 
 
 # The API returns a list of shikonas directly
-ShikonasResponse = List[Shikona] 
+ShikonasResponse = List[Shikona]

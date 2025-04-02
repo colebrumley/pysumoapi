@@ -1,13 +1,49 @@
 """
 Tests for the Sumo API client.
 """
-import pytest
+
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from zoneinfo import ZoneInfo
 
 from pysumoapi.client import SumoClient
-from pysumoapi.models import Rikishi, RikishiList, RikishiStats, DivisionStats, Sansho
+from pysumoapi.models import DivisionStats, Rikishi, RikishiList, RikishiStats, Sansho
+
+# Test constants
+TEST_DEFAULT_LIMIT = 10
+TEST_CUSTOM_LIMIT = 50
+TEST_SKIP = 10
+TEST_HEIGHT = 180
+TEST_WEIGHT = 150
+TEST_RIKISHI_ID = 1
+TEST_SUMODB_ID = 123
+TEST_NSK_ID = 456
+TEST_TOTAL_MATCHES = 80
+TEST_TOTAL_WINS = 39
+TEST_TOTAL_LOSSES = 41
+TEST_TOTAL_BASHO = 10
+TEST_TOTAL_ABSENCES = 1
+TEST_YUSHO = 1
+TEST_KANTO_SHO = 2
+TEST_GINO_SHO = 1
+TEST_SHUKUN_SHO = 1
+TEST_MAKUUCHI_MATCHES = 30
+TEST_MAKUUCHI_WINS = 15
+TEST_MAKUUCHI_LOSSES = 15
+TEST_JURYO_MATCHES = 20
+TEST_JURYO_WINS = 10
+TEST_JURYO_LOSSES = 10
+TEST_MAKUSHITA_MATCHES = 15
+TEST_MAKUSHITA_WINS = 7
+TEST_MAKUSHITA_LOSSES = 8
+TEST_JONIDAN_MATCHES = 10
+TEST_JONIDAN_WINS = 5
+TEST_JONIDAN_LOSSES = 5
+TEST_JONOKUCHI_MATCHES = 5
+TEST_JONOKUCHI_WINS = 2
+TEST_JONOKUCHI_LOSSES = 3
 
 
 @pytest.fixture
@@ -26,17 +62,17 @@ def mock_transport():
 def mock_rikishi_response():
     """Create a mock response for the rikishi endpoint."""
     return {
-        "id": 1,
-        "sumodbId": 123,
-        "nskId": 456,
+        "id": TEST_RIKISHI_ID,
+        "sumodbId": TEST_SUMODB_ID,
+        "nskId": TEST_NSK_ID,
         "shikonaEn": "Test Rikishi",
         "shikonaJp": "テスト力士",
         "currentRank": "M1",
         "heya": "Test Stable",
         "birthDate": "1990-01-01T00:00:00Z",
         "shusshin": "Tokyo",
-        "height": 180,
-        "weight": 150,
+        "height": TEST_HEIGHT,
+        "weight": TEST_WEIGHT,
         "debut": "2010-01",
         "updatedAt": "2024-01-01T00:00:00Z",
     }
@@ -46,65 +82,65 @@ def mock_rikishi_response():
 def mock_rikishi_stats_response():
     """Create a mock response for the rikishi stats endpoint."""
     return {
+        "basho": TEST_TOTAL_BASHO,
+        "totalMatches": TEST_TOTAL_MATCHES,
+        "totalWins": TEST_TOTAL_WINS,
+        "totalLosses": TEST_TOTAL_LOSSES,
+        "totalAbsences": TEST_TOTAL_ABSENCES,
+        "yusho": TEST_YUSHO,
         "absenceByDivision": {
             "Jonidan": 0,
             "Jonokuchi": 0,
             "Juryo": 0,
             "Makushita": 0,
-            "Makuuchi": 1,
-            "Sandanme": 0
+            "Makuuchi": TEST_TOTAL_ABSENCES,
+            "Sandanme": 0,
         },
-        "basho": 10,
         "bashoByDivision": {
             "Jonidan": 2,
             "Jonokuchi": 1,
             "Juryo": 3,
             "Makushita": 2,
             "Makuuchi": 2,
-            "Sandanme": 0
+            "Sandanme": 0,
         },
         "lossByDivision": {
-            "Jonidan": 5,
-            "Jonokuchi": 3,
-            "Juryo": 10,
-            "Makushita": 8,
-            "Makuuchi": 15,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_LOSSES,
+            "Jonokuchi": TEST_JONOKUCHI_LOSSES,
+            "Juryo": TEST_JURYO_LOSSES,
+            "Makushita": TEST_MAKUSHITA_LOSSES,
+            "Makuuchi": TEST_MAKUUCHI_LOSSES,
+            "Sandanme": 0,
         },
-        "sansho": {
-            "Gino-sho": 1,
-            "Kanto-sho": 2,
-            "Shukun-sho": 1
-        },
-        "totalAbsences": 1,
         "totalByDivision": {
-            "Jonidan": 10,
-            "Jonokuchi": 5,
-            "Juryo": 20,
-            "Makushita": 15,
-            "Makuuchi": 30,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_MATCHES,
+            "Jonokuchi": TEST_JONOKUCHI_MATCHES,
+            "Juryo": TEST_JURYO_MATCHES,
+            "Makushita": TEST_MAKUSHITA_MATCHES,
+            "Makuuchi": TEST_MAKUUCHI_MATCHES,
+            "Sandanme": 0,
         },
-        "totalLosses": 41,
-        "totalMatches": 80,
-        "totalWins": 39,
         "winsByDivision": {
-            "Jonidan": 5,
-            "Jonokuchi": 2,
-            "Juryo": 10,
-            "Makushita": 7,
-            "Makuuchi": 15,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_WINS,
+            "Jonokuchi": TEST_JONOKUCHI_WINS,
+            "Juryo": TEST_JURYO_WINS,
+            "Makushita": TEST_MAKUSHITA_WINS,
+            "Makuuchi": TEST_MAKUUCHI_WINS,
+            "Sandanme": 0,
         },
-        "yusho": 1,
         "yushoByDivision": {
             "Jonidan": 0,
             "Jonokuchi": 0,
-            "Juryo": 1,
+            "Juryo": TEST_YUSHO,
             "Makushita": 0,
             "Makuuchi": 0,
-            "Sandanme": 0
-        }
+            "Sandanme": 0,
+        },
+        "sansho": {
+            "Gino-sho": TEST_GINO_SHO,
+            "Kanto-sho": TEST_KANTO_SHO,
+            "Shukun-sho": TEST_SHUKUN_SHO,
+        },
     }
 
 
@@ -117,17 +153,17 @@ def mock_rikishis_response():
         "total": 1,
         "records": [
             {
-                "id": 1,
-                "sumodbId": 123,
-                "nskId": 456,
+                "id": TEST_RIKISHI_ID,
+                "sumodbId": TEST_SUMODB_ID,
+                "nskId": TEST_NSK_ID,
                 "shikonaEn": "Test Rikishi",
                 "shikonaJp": "テスト力士",
                 "currentRank": "M1",
                 "heya": "Test Stable",
                 "birthDate": "1990-01-01T00:00:00Z",
                 "shusshin": "Tokyo",
-                "height": 180,
-                "weight": 150,
+                "height": TEST_HEIGHT,
+                "weight": TEST_WEIGHT,
                 "debut": "2010-01",
                 "updatedAt": "2024-01-01T00:00:00Z",
             }
@@ -139,37 +175,40 @@ def mock_rikishis_response():
 async def test_get_rikishi():
     """Test getting a single rikishi."""
     mock_response = {
-        "id": 1,
-        "sumodbId": 123,
-        "nskId": 456,
+        "id": TEST_RIKISHI_ID,
+        "sumodbId": TEST_SUMODB_ID,
+        "nskId": TEST_NSK_ID,
         "shikonaEn": "Test Rikishi",
         "shikonaJp": "テスト力士",
         "currentRank": "M1",
         "heya": "Test Stable",
         "birthDate": "1990-01-01T00:00:00Z",
         "shusshin": "Tokyo",
-        "height": 180,
-        "weight": 150,
+        "height": TEST_HEIGHT,
+        "weight": TEST_WEIGHT,
         "debut": "2010-01",
         "updatedAt": "2024-01-01T00:00:00Z",
     }
-    
+
     async with SumoClient() as client:
-        with patch.object(client._client, "request", return_value=AsyncMock(
-            json=lambda: mock_response,
-            raise_for_status=lambda: None
-        )):
+        with patch.object(
+            client._client,
+            "request",
+            return_value=AsyncMock(
+                json=lambda: mock_response, raise_for_status=lambda: None
+            ),
+        ):
             rikishi = await client.get_rikishi("1")
-            
+
     assert isinstance(rikishi, Rikishi)
-    assert rikishi.id == 1
+    assert rikishi.id == TEST_RIKISHI_ID
     assert rikishi.shikona_en == "Test Rikishi"
     assert rikishi.current_rank == "M1"
     assert rikishi.heya == "Test Stable"
     assert rikishi.birth_date == datetime(1990, 1, 1, tzinfo=ZoneInfo("UTC"))
     assert rikishi.shusshin == "Tokyo"
-    assert rikishi.height == 180
-    assert rikishi.weight == 150
+    assert rikishi.height == TEST_HEIGHT
+    assert rikishi.weight == TEST_WEIGHT
     assert rikishi.debut == "2010-01"
     assert rikishi.updated_at == datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))
 
@@ -178,19 +217,19 @@ async def test_get_rikishi():
 async def test_get_rikishi_stats():
     """Test getting a rikishi's statistics."""
     mock_response = {
-        "basho": 10,
-        "totalMatches": 80,
-        "totalWins": 39,
-        "totalLosses": 41,
-        "totalAbsences": 1,
-        "yusho": 1,
+        "basho": TEST_TOTAL_BASHO,
+        "totalMatches": TEST_TOTAL_MATCHES,
+        "totalWins": TEST_TOTAL_WINS,
+        "totalLosses": TEST_TOTAL_LOSSES,
+        "totalAbsences": TEST_TOTAL_ABSENCES,
+        "yusho": TEST_YUSHO,
         "absenceByDivision": {
             "Jonidan": 0,
             "Jonokuchi": 0,
             "Juryo": 0,
             "Makushita": 0,
-            "Makuuchi": 1,
-            "Sandanme": 0
+            "Makuuchi": TEST_TOTAL_ABSENCES,
+            "Sandanme": 0,
         },
         "bashoByDivision": {
             "Jonidan": 2,
@@ -198,72 +237,75 @@ async def test_get_rikishi_stats():
             "Juryo": 3,
             "Makushita": 2,
             "Makuuchi": 2,
-            "Sandanme": 0
+            "Sandanme": 0,
         },
         "lossByDivision": {
-            "Jonidan": 5,
-            "Jonokuchi": 3,
-            "Juryo": 10,
-            "Makushita": 8,
-            "Makuuchi": 15,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_LOSSES,
+            "Jonokuchi": TEST_JONOKUCHI_LOSSES,
+            "Juryo": TEST_JURYO_LOSSES,
+            "Makushita": TEST_MAKUSHITA_LOSSES,
+            "Makuuchi": TEST_MAKUUCHI_LOSSES,
+            "Sandanme": 0,
         },
         "totalByDivision": {
-            "Jonidan": 10,
-            "Jonokuchi": 5,
-            "Juryo": 20,
-            "Makushita": 15,
-            "Makuuchi": 30,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_MATCHES,
+            "Jonokuchi": TEST_JONOKUCHI_MATCHES,
+            "Juryo": TEST_JURYO_MATCHES,
+            "Makushita": TEST_MAKUSHITA_MATCHES,
+            "Makuuchi": TEST_MAKUUCHI_MATCHES,
+            "Sandanme": 0,
         },
         "winsByDivision": {
-            "Jonidan": 5,
-            "Jonokuchi": 2,
-            "Juryo": 10,
-            "Makushita": 7,
-            "Makuuchi": 15,
-            "Sandanme": 0
+            "Jonidan": TEST_JONIDAN_WINS,
+            "Jonokuchi": TEST_JONOKUCHI_WINS,
+            "Juryo": TEST_JURYO_WINS,
+            "Makushita": TEST_MAKUSHITA_WINS,
+            "Makuuchi": TEST_MAKUUCHI_WINS,
+            "Sandanme": 0,
         },
         "yushoByDivision": {
             "Jonidan": 0,
             "Jonokuchi": 0,
-            "Juryo": 1,
+            "Juryo": TEST_YUSHO,
             "Makushita": 0,
             "Makuuchi": 0,
-            "Sandanme": 0
+            "Sandanme": 0,
         },
         "sansho": {
-            "Gino-sho": 1,
-            "Kanto-sho": 2,
-            "Shukun-sho": 1
-        }
+            "Gino-sho": TEST_GINO_SHO,
+            "Kanto-sho": TEST_KANTO_SHO,
+            "Shukun-sho": TEST_SHUKUN_SHO,
+        },
     }
-    
+
     async with SumoClient() as client:
-        with patch.object(client._client, "request", return_value=AsyncMock(
-            json=lambda: mock_response,
-            raise_for_status=lambda: None
-        )):
+        with patch.object(
+            client._client,
+            "request",
+            return_value=AsyncMock(
+                json=lambda: mock_response, raise_for_status=lambda: None
+            ),
+        ):
             stats = await client.get_rikishi_stats("1")
-            
+
     assert isinstance(stats, RikishiStats)
-    assert stats.basho == 10
-    assert stats.total_matches == 80
-    assert stats.total_wins == 39
-    assert stats.total_losses == 41
-    assert stats.total_absences == 1
-    assert stats.yusho == 1
-    
+    assert stats.basho == TEST_TOTAL_BASHO
+    assert stats.total_matches == TEST_TOTAL_MATCHES
+    assert stats.total_wins == TEST_TOTAL_WINS
+    assert stats.total_losses == TEST_TOTAL_LOSSES
+    assert stats.total_absences == TEST_TOTAL_ABSENCES
+    assert stats.yusho == TEST_YUSHO
+
     # Test division stats
     assert isinstance(stats.absence_by_division, DivisionStats)
-    assert stats.absence_by_division.Makuuchi == 1
+    assert stats.absence_by_division.Makuuchi == TEST_TOTAL_ABSENCES
     assert stats.absence_by_division.Juryo == 0
-    
+
     # Test sansho (special prizes)
     assert isinstance(stats.sansho, Sansho)
-    assert stats.sansho.Gino_sho == 1
-    assert stats.sansho.Kanto_sho == 2
-    assert stats.sansho.Shukun_sho == 1
+    assert stats.sansho.Gino_sho == TEST_GINO_SHO
+    assert stats.sansho.Kanto_sho == TEST_KANTO_SHO
+    assert stats.sansho.Shukun_sho == TEST_SHUKUN_SHO
 
 
 @pytest.mark.asyncio
@@ -275,46 +317,49 @@ async def test_get_rikishis():
         "total": 1,
         "records": [
             {
-                "id": 1,
-                "sumodbId": 123,
-                "nskId": 456,
+                "id": TEST_RIKISHI_ID,
+                "sumodbId": TEST_SUMODB_ID,
+                "nskId": TEST_NSK_ID,
                 "shikonaEn": "Test Rikishi",
                 "shikonaJp": "テスト力士",
                 "currentRank": "M1",
                 "heya": "Test Stable",
                 "birthDate": "1990-01-01T00:00:00Z",
                 "shusshin": "Tokyo",
-                "height": 180,
-                "weight": 150,
+                "height": TEST_HEIGHT,
+                "weight": TEST_WEIGHT,
                 "debut": "2010-01",
                 "updatedAt": "2024-01-01T00:00:00Z",
             }
         ],
     }
-    
+
     async with SumoClient() as client:
-        with patch.object(client._client, "request", return_value=AsyncMock(
-            json=lambda: mock_response,
-            raise_for_status=lambda: None
-        )):
+        with patch.object(
+            client._client,
+            "request",
+            return_value=AsyncMock(
+                json=lambda: mock_response, raise_for_status=lambda: None
+            ),
+        ):
             result = await client.get_rikishis()
-            
+
     assert isinstance(result, RikishiList)
-    assert result.limit == 10
+    assert result.limit == TEST_DEFAULT_LIMIT
     assert result.skip == 0
     assert result.total == 1
     assert len(result.records) == 1
-    
+
     rikishi = result.records[0]
     assert isinstance(rikishi, Rikishi)
-    assert rikishi.id == 1
+    assert rikishi.id == TEST_RIKISHI_ID
     assert rikishi.shikona_en == "Test Rikishi"
     assert rikishi.current_rank == "M1"
     assert rikishi.heya == "Test Stable"
     assert rikishi.birth_date == datetime(1990, 1, 1, tzinfo=ZoneInfo("UTC"))
     assert rikishi.shusshin == "Tokyo"
-    assert rikishi.height == 180
-    assert rikishi.weight == 150
+    assert rikishi.height == TEST_HEIGHT
+    assert rikishi.weight == TEST_WEIGHT
     assert rikishi.debut == "2010-01"
     assert rikishi.updated_at == datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))
 
@@ -328,41 +373,44 @@ async def test_get_rikishis_with_filters():
         "total": 1,
         "records": [
             {
-                "id": 1,
-                "sumodbId": 123,
-                "nskId": 456,
+                "id": TEST_RIKISHI_ID,
+                "sumodbId": TEST_SUMODB_ID,
+                "nskId": TEST_NSK_ID,
                 "shikonaEn": "Test Rikishi",
                 "shikonaJp": "テスト力士",
                 "currentRank": "M1",
                 "heya": "Test Stable",
                 "birthDate": "1990-01-01T00:00:00Z",
                 "shusshin": "Tokyo",
-                "height": 180,
-                "weight": 150,
+                "height": TEST_HEIGHT,
+                "weight": TEST_WEIGHT,
                 "debut": "2010-01",
                 "updatedAt": "2024-01-01T00:00:00Z",
             }
         ],
     }
-    
+
     async with SumoClient() as client:
-        with patch.object(client._client, "request", return_value=AsyncMock(
-            json=lambda: mock_response,
-            raise_for_status=lambda: None
-        )) as mock_request:
+        with patch.object(
+            client._client,
+            "request",
+            return_value=AsyncMock(
+                json=lambda: mock_response, raise_for_status=lambda: None
+            ),
+        ) as mock_request:
             result = await client.get_rikishis(
                 shikona_en="Test",
                 heya="Test Stable",
-                sumodb_id=123,
-                nsk_id=456,
+                sumodb_id=TEST_SUMODB_ID,
+                nsk_id=TEST_NSK_ID,
                 intai=False,
                 measurements=True,
                 ranks=True,
                 shikonas=True,
-                limit=50,
-                skip=10,
+                limit=TEST_CUSTOM_LIMIT,
+                skip=TEST_SKIP,
             )
-            
+
             # Verify the request parameters
             mock_request.assert_called_once_with(
                 "GET",
@@ -370,20 +418,20 @@ async def test_get_rikishis_with_filters():
                 params={
                     "shikonaEn": "Test",
                     "heya": "Test Stable",
-                    "sumodbId": 123,
-                    "nskId": 456,
+                    "sumodbId": TEST_SUMODB_ID,
+                    "nskId": TEST_NSK_ID,
                     "intai": "false",
                     "measurements": "true",
                     "ranks": "true",
                     "shikonas": "true",
-                    "limit": 50,
-                    "skip": 10,
-                }
+                    "limit": TEST_CUSTOM_LIMIT,
+                    "skip": TEST_SKIP,
+                },
             )
-            
+
     # Verify the response
     assert isinstance(result, RikishiList)
-    assert result.limit == 50
-    assert result.skip == 10
+    assert result.limit == TEST_CUSTOM_LIMIT
+    assert result.skip == TEST_SKIP
     assert result.total == 1
-    assert len(result.records) == 1 
+    assert len(result.records) == 1

@@ -1,64 +1,87 @@
-from typing import Optional, Dict, Any, List
-import httpx
 from datetime import datetime
-from pysumoapi.models.rikishi_matches import RikishiMatchesResponse, RikishiOpponentMatchesResponse
-from pysumoapi.models.basho import Basho
-from pysumoapi.models import Rikishi, RikishiList, RikishiStats
-from pysumoapi.models.banzuke import Banzuke
-from pysumoapi.models.torikumi import Torikumi
-from pysumoapi.models.kimarite import KimariteResponse, KimariteMatchesResponse
-from pysumoapi.models.measurements import MeasurementsResponse, Measurement
-from pysumoapi.models.ranks import RanksResponse, Rank
-from pysumoapi.models.shikonas import ShikonasResponse, Shikona
+from typing import Any, Dict, Optional
+
+import httpx
+
+from pysumoapi.models import (
+    Banzuke,
+    Basho,
+    KimariteMatchesResponse,
+    KimariteResponse,
+    Match,
+    Measurement,
+    MeasurementsResponse,
+    Rank,
+    RanksResponse,
+    Rikishi,
+    RikishiList,
+    RikishiMatchesResponse,
+    RikishiOpponentMatchesResponse,
+    RikishiStats,
+    Shikona,
+    ShikonasResponse,
+    Torikumi,
+)
+
 
 class SumoClient:
     """Client for interacting with the Sumo API."""
-    
-    def __init__(self, base_url: str = "https://sumo-api.com"):
+
+    def __init__(self, base_url: str = "https://sumo-api.com", verify_ssl: bool = True):
         """Initialize the client with the base URL."""
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self._client: Optional[httpx.AsyncClient] = None
-        
+        self.verify_ssl = verify_ssl
+
     async def __aenter__(self) -> "SumoClient":
         """Create an async context manager."""
-        self._client = httpx.AsyncClient()
+        import ssl
+
+        import certifi
+
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        self._client = httpx.AsyncClient(
+            verify=ssl_context if self.verify_ssl else False
+        )
         return self
-        
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Clean up the async client."""
         if self._client:
             await self._client.aclose()
-            
-    async def _make_request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+    async def _make_request(
+        self, method: str, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Make a request to the Sumo API.
-        
+
         Args:
             method: HTTP method to use
             path: API endpoint path
             params: Optional query parameters
-            
+
         Returns:
             JSON response data
         """
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
-            
+
         url = f"{self.base_url}/api{path}"
         response = await self._client.request(method, url, params=params)
         response.raise_for_status()
         return response.json()
-        
+
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""
         data = await self._make_request("GET", f"/rikishi/{rikishi_id}")
         return Rikishi.model_validate(data)
-        
+
     async def get_rikishi_stats(self, rikishi_id: str) -> RikishiStats:
         """Get statistics for a rikishi."""
         data = await self._make_request("GET", f"/rikishi/{rikishi_id}/stats")
         return RikishiStats.model_validate(data)
-        
+
     async def get_rikishis(
         self,
         shikona_en: Optional[str] = None,
@@ -80,7 +103,7 @@ class SumoClient:
             "ranks": str(ranks).lower(),
             "shikonas": str(shikonas).lower(),
         }
-        
+
         if shikona_en:
             params["shikonaEn"] = shikona_en
         if heya:
@@ -91,109 +114,112 @@ class SumoClient:
             params["nskId"] = nsk_id
         if intai is not None:
             params["intai"] = str(intai).lower()
-            
+
         data = await self._make_request("GET", "/rikishis", params=params)
         return RikishiList.model_validate(data)
-        
-    async def get_rikishi_matches(self, rikishi_id: int, basho_id: Optional[str] = None) -> RikishiMatchesResponse:
+
+    async def get_rikishi_matches(
+        self, rikishi_id: int, basho_id: Optional[str] = None
+    ) -> RikishiMatchesResponse:
         """
         Get all matches for a specific rikishi.
-        
+
         Args:
             rikishi_id: The ID of the rikishi
             basho_id: Optional basho ID in YYYYMM format to filter matches
-            
+
         Returns:
             RikishiMatchesResponse containing the matches
-            
+
         Raises:
             ValueError: If rikishi_id is invalid or basho_id format is incorrect
         """
         if rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
-            
+
         if basho_id and not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         params = {}
         if basho_id:
             params["bashoId"] = basho_id
-            
-        data = await self._make_request("GET", f"/rikishi/{rikishi_id}/matches", params=params)
+
+        data = await self._make_request(
+            "GET", f"/rikishi/{rikishi_id}/matches", params=params
+        )
         return RikishiMatchesResponse.model_validate(data)
 
     async def get_rikishi_opponent_matches(
-        self,
-        rikishi_id: int,
-        opponent_id: int,
-        basho_id: Optional[str] = None
+        self, rikishi_id: int, opponent_id: int, basho_id: Optional[str] = None
     ) -> RikishiOpponentMatchesResponse:
         """
         Get all matches between two specific rikishi.
-        
+
         Args:
             rikishi_id: The ID of the first rikishi
             opponent_id: The ID of the second rikishi
             basho_id: Optional basho ID in YYYYMM format to filter matches
-            
+
         Returns:
             RikishiOpponentMatchesResponse containing the matches between the two rikishi
-            
+
         Raises:
             ValueError: If rikishi_id or opponent_id is invalid, or basho_id format is incorrect
         """
         if rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
-            
+
         if opponent_id <= 0:
             raise ValueError("Opponent ID must be positive")
-            
+
         if basho_id and not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         params = {}
         if basho_id:
             params["bashoId"] = basho_id
-            
-        data = await self._make_request("GET", f"/rikishi/{rikishi_id}/matches/{opponent_id}", params=params)
+
+        data = await self._make_request(
+            "GET", f"/rikishi/{rikishi_id}/matches/{opponent_id}", params=params
+        )
         return RikishiOpponentMatchesResponse.model_validate(data)
 
     async def get_basho(self, basho_id: str) -> Basho:
         """
         Get details for a specific basho tournament.
-        
+
         Args:
             basho_id: The basho ID in YYYYMM format (e.g., 202305)
-            
+
         Returns:
             Basho object containing tournament details, winners, and special prizes
-            
+
         Raises:
             ValueError: If basho_id format is incorrect or date is in the future
         """
         if not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         # Check if date is in the future
         year = int(basho_id[:4])
         month = int(basho_id[4:])
         basho_date = datetime(year, month, 1)
         if basho_date > datetime.now():
             raise ValueError("Cannot get details for future basho")
-            
+
         data = await self._make_request("GET", f"/basho/{basho_id}")
         return Basho.model_validate(data)
 
     async def get_banzuke(self, basho_id: str, division: str) -> Banzuke:
         """Get banzuke details for a specific basho and division.
-        
+
         Args:
             basho_id: Basho ID in YYYYMM format
             division: Division name (Makuuchi, Juryo, Makushita, Sandanme, Jonidan, Jonokuchi)
-            
+
         Returns:
             Banzuke object containing the banzuke details
-            
+
         Raises:
             ValueError: If basho_id is invalid or in the future, or if division is invalid
         """
@@ -204,30 +230,54 @@ class SumoClient:
             basho_date = datetime(year, month, 1)
         except (ValueError, IndexError):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         # Check if basho is in the future
         if basho_date > datetime.now():
             raise ValueError("Cannot fetch future basho")
-            
+
         # Validate division
-        valid_divisions = ["Makuuchi", "Juryo", "Makushita", "Sandanme", "Jonidan", "Jonokuchi"]
+        valid_divisions = [
+            "Makuuchi",
+            "Juryo",
+            "Makushita",
+            "Sandanme",
+            "Jonidan",
+            "Jonokuchi",
+        ]
         if division not in valid_divisions:
             raise ValueError("Invalid division")
-            
+
         data = await self._make_request("GET", f"/basho/{basho_id}/banzuke/{division}")
-        return Banzuke.model_validate(data)
+
+        # Combine east and west rikishi into a single list
+        rikishi_list = []
+        for rikishi in data.get("east", []) + data.get("west", []):
+            if "record" in rikishi:
+                rikishi["matches"] = [
+                    Match.from_banzuke(match) for match in rikishi["record"]
+                ]
+                del rikishi["record"]
+            rikishi_list.append(rikishi)
+
+        return Banzuke.model_validate(
+            {
+                "bashoId": data["bashoId"],
+                "division": data["division"],
+                "rikishi": rikishi_list,
+            }
+        )
 
     async def get_torikumi(self, basho_id: str, division: str, day: int) -> Torikumi:
         """Get torikumi details for a specific basho, division, and day.
-        
+
         Args:
             basho_id: Basho ID in YYYYMM format
             division: Division name (Makuuchi, Juryo, Makushita, Sandanme, Jonidan, Jonokuchi)
             day: Day of the tournament (1-15)
-            
+
         Returns:
             Torikumi object containing the matches for the specified day
-            
+
         Raises:
             ValueError: If basho_id is invalid or in the future, division is invalid, or day is out of range
         """
@@ -238,21 +288,37 @@ class SumoClient:
             basho_date = datetime(year, month, 1)
         except (ValueError, IndexError):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         # Check if basho is in the future
         if basho_date > datetime.now():
             raise ValueError("Cannot fetch future basho")
-            
+
         # Validate division
-        valid_divisions = ["Makuuchi", "Juryo", "Makushita", "Sandanme", "Jonidan", "Jonokuchi"]
+        valid_divisions = [
+            "Makuuchi",
+            "Juryo",
+            "Makushita",
+            "Sandanme",
+            "Jonidan",
+            "Jonokuchi",
+        ]
         if division not in valid_divisions:
             raise ValueError("Invalid division")
-            
+
         # Validate day
         if not 1 <= day <= 15:
             raise ValueError("Day must be between 1 and 15")
-            
-        data = await self._make_request("GET", f"/basho/{basho_id}/torikumi/{division}/{day}")
+
+        data = await self._make_request(
+            "GET", f"/basho/{basho_id}/torikumi/{division}/{day}"
+        )
+
+        # Convert matches to use the unified Match model
+        if "torikumi" in data:
+            data["torikumi"] = [
+                Match.from_torikumi(match) for match in data["torikumi"]
+            ]
+
         return Torikumi.model_validate(data)
 
     async def get_kimarite(
@@ -260,7 +326,7 @@ class SumoClient:
         sort_field: Optional[str] = None,
         sort_order: Optional[str] = "asc",
         limit: Optional[int] = None,
-        skip: Optional[int] = 0
+        skip: Optional[int] = 0,
     ) -> KimariteResponse:
         """Get statistics on kimarite usage.
 
@@ -278,14 +344,16 @@ class SumoClient:
         """
         # Validate parameters
         if sort_field and sort_field not in ["count", "kimarite", "lastUsage"]:
-            raise ValueError("Invalid sort field. Must be one of: count, kimarite, lastUsage")
-        
+            raise ValueError(
+                "Invalid sort field. Must be one of: count, kimarite, lastUsage"
+            )
+
         if sort_order and sort_order not in ["asc", "desc"]:
             raise ValueError("Sort order must be either 'asc' or 'desc'")
-        
+
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be a positive integer")
-        
+
         if skip < 0:
             raise ValueError("Skip must be a non-negative integer")
 
@@ -308,7 +376,7 @@ class SumoClient:
         kimarite: str,
         sort_order: Optional[str] = "asc",
         limit: Optional[int] = None,
-        skip: Optional[int] = 0
+        skip: Optional[int] = 0,
     ) -> KimariteMatchesResponse:
         """Get matches where a specific kimarite was used.
 
@@ -327,16 +395,16 @@ class SumoClient:
         # Validate parameters
         if not kimarite:
             raise ValueError("Kimarite cannot be empty")
-        
+
         if sort_order and sort_order not in ["asc", "desc"]:
             raise ValueError("Sort order must be either 'asc' or 'desc'")
-        
+
         if limit is not None:
             if limit <= 0:
                 raise ValueError("Limit must be a positive integer")
             if limit > 1000:
                 raise ValueError("Limit cannot exceed 1000")
-        
+
         if skip < 0:
             raise ValueError("Skip must be a non-negative integer")
 
@@ -356,7 +424,7 @@ class SumoClient:
         self,
         basho_id: Optional[str] = None,
         rikishi_id: Optional[int] = None,
-        sort_order: Optional[str] = "desc"
+        sort_order: Optional[str] = "desc",
     ) -> MeasurementsResponse:
         """Get measurement changes by rikishi or basho.
 
@@ -374,13 +442,13 @@ class SumoClient:
         # Validate parameters
         if not basho_id and not rikishi_id:
             raise ValueError("Either basho_id or rikishi_id must be provided")
-            
+
         if basho_id and not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         if rikishi_id is not None and rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
-            
+
         if sort_order and sort_order not in ["asc", "desc"]:
             raise ValueError("Sort order must be either 'asc' or 'desc'")
 
@@ -394,21 +462,18 @@ class SumoClient:
         data = await self._make_request("GET", "/measurements", params=params)
         # Convert each item in the list to a Measurement model
         measurements = [Measurement.model_validate(item) for item in data]
-        
+
         # Sort by basho_id if requested
         if sort_order:
-            measurements.sort(
-                key=lambda m: m.basho_id,
-                reverse=(sort_order == "desc")
-            )
-            
+            measurements.sort(key=lambda m: m.basho_id, reverse=(sort_order == "desc"))
+
         return measurements
 
     async def get_ranks(
         self,
         basho_id: Optional[str] = None,
         rikishi_id: Optional[int] = None,
-        sort_order: Optional[str] = "desc"
+        sort_order: Optional[str] = "desc",
     ) -> RanksResponse:
         """Get rank changes by rikishi or basho.
 
@@ -426,13 +491,13 @@ class SumoClient:
         # Validate parameters
         if not basho_id and not rikishi_id:
             raise ValueError("Either basho_id or rikishi_id must be provided")
-            
+
         if basho_id and not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         if rikishi_id is not None and rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
-            
+
         if sort_order and sort_order not in ["asc", "desc"]:
             raise ValueError("Sort order must be either 'asc' or 'desc'")
 
@@ -446,21 +511,18 @@ class SumoClient:
         data = await self._make_request("GET", "/ranks", params=params)
         # Convert each item in the list to a Rank model
         ranks = [Rank.model_validate(item) for item in data]
-        
+
         # Sort by basho_id if requested
         if sort_order:
-            ranks.sort(
-                key=lambda r: r.basho_id,
-                reverse=(sort_order == "desc")
-            )
-            
+            ranks.sort(key=lambda r: r.basho_id, reverse=(sort_order == "desc"))
+
         return ranks
 
     async def get_shikonas(
         self,
         basho_id: Optional[str] = None,
         rikishi_id: Optional[int] = None,
-        sort_order: Optional[str] = "desc"
+        sort_order: Optional[str] = "desc",
     ) -> ShikonasResponse:
         """Get shikona changes by rikishi or basho.
 
@@ -478,13 +540,13 @@ class SumoClient:
         # Validate parameters
         if not basho_id and not rikishi_id:
             raise ValueError("Either basho_id or rikishi_id must be provided")
-            
+
         if basho_id and not (basho_id.isdigit() and len(basho_id) == 6):
             raise ValueError("Basho ID must be in YYYYMM format")
-            
+
         if rikishi_id is not None and rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
-            
+
         if sort_order and sort_order not in ["asc", "desc"]:
             raise ValueError("Sort order must be either 'asc' or 'desc'")
 
@@ -498,12 +560,9 @@ class SumoClient:
         data = await self._make_request("GET", "/shikonas", params=params)
         # Convert each item in the list to a Shikona model
         shikonas = [Shikona.model_validate(item) for item in data]
-        
+
         # Sort by basho_id if requested
         if sort_order:
-            shikonas.sort(
-                key=lambda s: s.basho_id,
-                reverse=(sort_order == "desc")
-            )
-            
-        return shikonas 
+            shikonas.sort(key=lambda s: s.basho_id, reverse=(sort_order == "desc"))
+
+        return shikonas

@@ -11,14 +11,17 @@ This script shows how to:
 
 import asyncio
 import sys
-from typing import List, Optional
+from typing import List
+
 import httpx
 
 from pysumoapi.client import SumoClient
 from pysumoapi.models.shikonas import Shikona
 
 
-async def get_rikishi_shikona_history(client: SumoClient, rikishi_id: int) -> list[Shikona]:
+async def get_rikishi_shikona_history(
+    client: SumoClient, rikishi_id: int
+) -> list[Shikona]:
     """Get the shikona history for a specific rikishi."""
     return await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
 
@@ -31,7 +34,7 @@ async def get_basho_shikonas(client: SumoClient, basho_id: str) -> list[Shikona]
 def display_shikona_history(shikonas: List[Shikona], title: str) -> None:
     """
     Display shikona history in a formatted way.
-    
+
     Args:
         shikonas: List of Shikona objects
         title: Title for the display
@@ -40,7 +43,7 @@ def display_shikona_history(shikonas: List[Shikona], title: str) -> None:
     print("=" * 50)
     print(f"Found {len(shikonas)} shikona records")
     print("-" * 50)
-    
+
     for shikona in shikonas:
         print(f"\nBasho: {shikona.basho_id}")
         print(f"Rikishi ID: {shikona.rikishi_id}")
@@ -60,20 +63,20 @@ async def main():
             print(f"\nShikona history for Rikishi {rikishi_id}:")
             for shikona in shikonas:
                 print(f"Basho: {shikona.basho_id}, Shikona: {shikona.shikona_en}")
-                
+
             # Get all shikona changes for a specific basho
             basho_id = "202305"  # Example basho ID
             shikonas = await get_basho_shikonas(client, basho_id)
             print(f"\nShikona changes in Basho {basho_id}:")
             for shikona in shikonas:
                 print(f"Rikishi: {shikona.rikishi_id}, Shikona: {shikona.shikona_en}")
-                
+
         except httpx.HTTPStatusError as e:
             print(f"HTTP error occurred: {e.response.status_code}")
             print(f"Response text: {e.response.text}")
         except Exception as e:
-            print(f"An error occurred: {str(e)}")
+            print(f"An error occurred: {e!s}")
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main())) 
+    sys.exit(asyncio.run(main()))

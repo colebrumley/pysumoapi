@@ -1,42 +1,47 @@
-"""Models for rikishi matches."""
-from typing import Dict, List, Optional
+"""Models for the rikishi matches endpoint."""
 
-from pydantic import BaseModel, Field
+from typing import List
 
+from pydantic import BaseModel, ConfigDict, Field
 
-class Match(BaseModel):
-    """Model representing a single match."""
-    basho_id: str = Field(alias="bashoId")
-    division: Optional[str] = None
-    day: int
-    match_no: Optional[int] = Field(None, alias="matchNo")
-    east_id: int = Field(alias="eastId")
-    east_shikona: str = Field(alias="eastShikona")
-    east_rank: str = Field(alias="eastRank")
-    west_id: int = Field(alias="westId")
-    west_shikona: str = Field(alias="westShikona")
-    west_rank: str = Field(alias="westRank")
-    kimarite: Optional[str] = None
-    winner_id: int = Field(alias="winnerId")
-    winner_en: str = Field(alias="winnerEn")
-    winner_jp: str = Field(alias="winnerJp")
+from pysumoapi.models.match import Match
 
 
 class RikishiMatchesResponse(BaseModel):
-    """Model representing a response containing rikishi matches."""
-    limit: int
-    skip: int
-    total: int
-    records: List[Match]
-    opponent_wins: Optional[int] = Field(None, alias="opponentWins")
-    rikishi_wins: Optional[int] = Field(None, alias="rikishiWins")
+    """Model for the rikishi matches response."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    limit: int = Field(..., description="The maximum number of records returned")
+    skip: int = Field(..., description="The number of records skipped")
+    total: int = Field(..., description="The total number of records")
+    records: List[Match] = Field(..., description="List of matches for the rikishi")
 
 
 class RikishiOpponentMatchesResponse(BaseModel):
-    """Model representing a response containing matches between two rikishi."""
-    matches: List[Match]
-    kimarite_losses: Dict[str, int] = Field(alias="kimariteLosses")
-    kimarite_wins: Dict[str, int] = Field(alias="kimariteWins")
-    opponent_wins: int = Field(alias="opponentWins")
-    rikishi_wins: int = Field(alias="rikishiWins")
-    total: int 
+    """Model for the rikishi opponent matches response."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    total: int = Field(
+        ..., description="The total number of matches between the rikishi"
+    )
+    rikishi_wins: int = Field(
+        ..., alias="rikishiWins", description="Number of wins for the first rikishi"
+    )
+    opponent_wins: int = Field(
+        ..., alias="opponentWins", description="Number of wins for the opponent"
+    )
+    kimarite_wins: dict[str, int] = Field(
+        ...,
+        alias="kimariteWins",
+        description="Dictionary of winning kimarite techniques and their counts",
+    )
+    kimarite_losses: dict[str, int] = Field(
+        ...,
+        alias="kimariteLosses",
+        description="Dictionary of losing kimarite techniques and their counts",
+    )
+    matches: List[Match] = Field(
+        ..., description="List of matches between the two rikishi"
+    )

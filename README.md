@@ -90,19 +90,45 @@ async with SumoClient() as client:
 
 #### Methods
 
-- `get_rikishi(rikishi_id: int) -> Rikishi`: Get information about a rikishi
-- `get_rikishi_stats(rikishi_id: int) -> RikishiStats`: Get statistics for a rikishi
-- `get_shikonas(rikishi_id: Optional[int] = None, basho_id: Optional[str] = None, sort_order: Optional[str] = "desc") -> List[Shikona]`: Get shikona history
-- `get_measurements(rikishi_id: Optional[int] = None, basho_id: Optional[str] = None, sort_order: Optional[str] = "desc") -> List[Measurement]`: Get measurements history
-- `get_ranks(rikishi_id: Optional[int] = None, basho_id: Optional[str] = None, sort_order: Optional[str] = "desc") -> List[Rank]`: Get rank history
+- `get_rikishi(rikishi_id: str) -> Rikishi`: Get information about a rikishi
+- `get_rikishi_stats(rikishi_id: str) -> RikishiStats`: Get statistics for a rikishi
+- `get_rikishis(shikona_en: Optional[str] = None, heya: Optional[str] = None, sumodb_id: Optional[int] = None, nsk_id: Optional[int] = None, intai: Optional[bool] = None, measurements: bool = True, ranks: bool = True, shikonas: bool = True, limit: int = 10, skip: int = 0) -> RikishiList`: Get a list of rikishi with optional filters
+- `get_rikishi_matches(rikishi_id: int, basho_id: Optional[str] = None) -> RikishiMatchesResponse`: Get all matches for a specific rikishi
+- `get_rikishi_opponent_matches(rikishi_id: int, opponent_id: int, basho_id: Optional[str] = None) -> RikishiOpponentMatchesResponse`: Get all matches between two specific rikishi
+- `get_basho(basho_id: str) -> Basho`: Get details for a specific basho tournament
+- `get_banzuke(basho_id: str, division: str) -> Banzuke`: Get banzuke details for a specific basho and division
+- `get_torikumi(basho_id: str, division: str, day: int) -> Torikumi`: Get torikumi details for a specific basho, division, and day
+- `get_kimarite(sort_field: Optional[str] = None, sort_order: Optional[str] = "asc", limit: Optional[int] = None, skip: Optional[int] = 0) -> KimariteResponse`: Get statistics on kimarite usage
+- `get_kimarite_matches(kimarite: str, sort_order: Optional[str] = "asc", limit: Optional[int] = None, skip: Optional[int] = 0) -> KimariteMatchesResponse`: Get matches where a specific kimarite was used
+- `get_measurements(basho_id: Optional[str] = None, rikishi_id: Optional[int] = None, sort_order: Optional[str] = "desc") -> MeasurementsResponse`: Get measurement changes by rikishi or basho
+- `get_ranks(basho_id: Optional[str] = None, rikishi_id: Optional[int] = None, sort_order: Optional[str] = "desc") -> RanksResponse`: Get rank changes by rikishi or basho
+- `get_shikonas(basho_id: Optional[str] = None, rikishi_id: Optional[int] = None, sort_order: Optional[str] = "desc") -> ShikonasResponse`: Get shikona changes by rikishi or basho
 
 ### Data Models
 
 - `Rikishi`: Information about a rikishi
+- `RikishiList`: List of rikishi with pagination information
 - `RikishiStats`: Statistics for a rikishi
-- `Shikona`: Shikona (ring name) information
+- `RikishiMatchesResponse`: Response containing rikishi matches
+- `RikishiOpponentMatchesResponse`: Response containing matches between two rikishi
+- `Basho`: Information about a basho tournament
+- `Banzuke`: Banzuke details for a division
+- `RikishiBanzuke`: Individual rikishi entry in a banzuke
+- `Torikumi`: Match schedule for a specific day
+- `YushoWinner`: Information about a yusho winner
+- `Match`: Unified model for sumo matches across all endpoints
+- `KimariteResponse`: Statistics about kimarite usage
+- `KimariteMatch`: Information about a match where a specific kimarite was used
+- `KimariteMatchesResponse`: Response containing matches with a specific kimarite
 - `Measurement`: Physical measurements of a rikishi
+- `MeasurementsResponse`: Response containing measurement records
 - `Rank`: Rank information for a rikishi
+- `RanksResponse`: Response containing rank records
+- `Shikona`: Shikona (ring name) information
+- `ShikonasResponse`: Response containing shikona records
+- `DivisionStats`: Statistics broken down by division
+- `Sansho`: Special prize information
+- `RikishiPrize`: Information about a rikishi who won a prize
 
 ## Examples
 

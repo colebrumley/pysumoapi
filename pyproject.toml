@@ -38,7 +38,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest-asyncio>=0.26.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.2.0",
     "mypy>=1.8.0",
@@ -55,7 +55,6 @@ Issues = "https://github.com/colebrumley/pysumoapi/issues"
 Changelog = "https://github.com/colebrumley/pysumoapi/blob/main/CHANGELOG.md"
 
 [project.scripts]
-pysumoapi = "pysumoapi.cli:main"
 
 [tool.hatch.build]
 packages = ["pysumoapi"]
@@ -77,7 +76,10 @@ include = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-asyncio_mode = "strict"
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark test as async",
+]
 
 [tool.ruff]
 line-length = 88

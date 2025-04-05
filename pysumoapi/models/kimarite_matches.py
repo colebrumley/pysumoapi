@@ -1,7 +1,7 @@
 """Models for kimarite matches."""
 
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from zoneinfo import ZoneInfo
@@ -15,25 +15,27 @@ class KimariteMatch(BaseModel):
         json_encoders={datetime: lambda dt: dt.astimezone(ZoneInfo("UTC")).isoformat()},
     )
 
-    kimarite: str = Field(..., description="The kimarite used in the match")
+    id: str = Field(..., description="Unique identifier for the match")
     basho_id: str = Field(..., alias="bashoId", description="The ID of the basho")
+    division: str = Field(..., description="The division of the match")
     day: int = Field(..., description="The day of the basho", ge=1, le=15)
     match_no: int = Field(..., alias="matchNo", description="The match number", gt=0)
-    east_id: str = Field(..., alias="eastId", description="The ID of the east rikishi")
+    east_id: int = Field(..., alias="eastId", description="The ID of the east rikishi")
     east_shikona: str = Field(
         ..., alias="eastShikona", description="The shikona of the east rikishi"
     )
     east_rank: str = Field(
         ..., alias="eastRank", description="The rank of the east rikishi"
     )
-    west_id: str = Field(..., alias="westId", description="The ID of the west rikishi")
+    west_id: int = Field(..., alias="westId", description="The ID of the west rikishi")
     west_shikona: str = Field(
         ..., alias="westShikona", description="The shikona of the west rikishi"
     )
     west_rank: str = Field(
         ..., alias="westRank", description="The rank of the west rikishi"
     )
-    winner_id: str = Field(
+    kimarite: str = Field(..., description="The kimarite used in the match")
+    winner_id: int = Field(
         ..., alias="winnerId", description="The ID of the winning rikishi"
     )
     winner_en: str = Field(
@@ -42,11 +44,11 @@ class KimariteMatch(BaseModel):
     winner_jp: str = Field(
         ..., alias="winnerJp", description="The Japanese name of the winning rikishi"
     )
-    created_at: datetime = Field(
-        ..., alias="createdAt", description="When the record was created"
+    created_at: Optional[datetime] = Field(
+        None, alias="createdAt", description="When the record was created"
     )
-    updated_at: datetime = Field(
-        ..., alias="updatedAt", description="When the record was last updated"
+    updated_at: Optional[datetime] = Field(
+        None, alias="updatedAt", description="When the record was last updated"
     )
 
 

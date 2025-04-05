@@ -29,7 +29,7 @@ class Match(BaseModel):
     )
 
     # East rikishi details (required for torikumi matches)
-    east_id: Optional[str] = Field(
+    east_id: Optional[int] = Field(
         None, alias="eastId", description="East rikishi's ID"
     )
     east_shikona: Optional[str] = Field(
@@ -40,7 +40,7 @@ class Match(BaseModel):
     )
 
     # West rikishi details (required for torikumi matches)
-    west_id: Optional[str] = Field(
+    west_id: Optional[int] = Field(
         None, alias="westId", description="West rikishi's ID"
     )
     west_shikona: Optional[str] = Field(
@@ -58,7 +58,7 @@ class Match(BaseModel):
         )
     )
     kimarite: Optional[str] = Field(None, description="Winning technique used")
-    winner_id: Optional[str] = Field(None, alias="winnerId", description="Winner's ID")
+    winner_id: Optional[int] = Field(None, alias="winnerId", description="Winner's ID")
     winner_en: Optional[str] = Field(
         None, alias="winnerEn", description="Winner's English name"
     )
@@ -67,7 +67,7 @@ class Match(BaseModel):
     )
 
     # Opponent details (required for banzuke matches)
-    opponent_id: Optional[str] = Field(
+    opponent_id: Optional[int] = Field(
         None, alias="opponentID", description="Opponent's ID"
     )
     opponent_shikona_en: Optional[str] = Field(
@@ -86,14 +86,14 @@ class Match(BaseModel):
             division=data["division"],
             day=data["day"],
             matchNo=data["matchNo"],
-            eastId=str(data["eastId"]),
+            eastId=data["eastId"],
             eastShikona=data["eastShikona"],
             eastRank=data["eastRank"],
-            westId=str(data["westId"]),
+            westId=data["westId"],
             westShikona=data["westShikona"],
             westRank=data["westRank"],
             kimarite=data["kimarite"],
-            winnerId=str(data["winnerId"]),
+            winnerId=data["winnerId"],
             winnerEn=data["winnerEn"],
             winnerJp=data["winnerJp"],
         )
@@ -102,11 +102,11 @@ class Match(BaseModel):
     def from_banzuke(cls, data: dict) -> "Match":
         """Create a Match instance from banzuke data."""
         return cls(
-            bashoId=data["bashoId"],
-            day=data["day"],
+            bashoId=data.get("bashoId", ""),  # This will be set by the client
+            day=1,  # Default to day 1 since banzuke records don't include day
             result=data["result"],
-            opponentID=str(data["opponentID"]),
+            opponentID=data["opponentID"],
             opponentShikonaEn=data["opponentShikonaEn"],
-            opponentShikonaJp=data["opponentShikonaJp"],
+            opponentShikonaJp=data.get("opponentShikonaJp", ""),  # This might be empty
             kimarite=data["kimarite"],
         )

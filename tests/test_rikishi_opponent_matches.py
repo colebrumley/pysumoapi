@@ -13,8 +13,8 @@ TEST_RIKISHI_WINS = 5
 TEST_OPPONENT_WINS = 8
 TEST_DAY = 15
 TEST_MATCH_NO = 19
-TEST_WEST_ID = "45"
-TEST_WINNER_ID = "45"
+TEST_WEST_ID = 45
+TEST_WINNER_ID = 45
 
 
 @pytest.mark.asyncio
@@ -31,14 +31,14 @@ async def test_get_rikishi_opponent_matches_success():
                 "division": "Makuuchi",
                 "day": 15,
                 "matchNo": 19,
-                "eastId": "1",
+                "eastId": 1,
                 "eastShikona": "Takakeisho",
                 "eastRank": "Ozeki 1 East",
-                "westId": "45",
+                "westId": 45,
                 "westShikona": "Terunofuji",
                 "westRank": "Komusubi 1 East",
                 "kimarite": "abisetaoshi",
-                "winnerId": "45",
+                "winnerId": 45,
                 "winnerEn": "Terunofuji",
                 "winnerJp": "",
             }
@@ -76,7 +76,7 @@ async def test_get_rikishi_opponent_matches_success():
     assert first_match.division == "Makuuchi"
     assert first_match.day == TEST_DAY
     assert first_match.match_no == TEST_MATCH_NO
-    assert first_match.east_id == "1"
+    assert first_match.east_id == 1
     assert first_match.east_shikona == "Takakeisho"
     assert first_match.east_rank == "Ozeki 1 East"
     assert first_match.west_id == TEST_WEST_ID
@@ -122,14 +122,14 @@ async def test_get_rikishi_opponent_matches_no_basho():
                 "division": "Makuuchi",
                 "day": 15,
                 "matchNo": 19,
-                "eastId": "1",
+                "eastId": 1,
                 "eastShikona": "Takakeisho",
                 "eastRank": "Ozeki 1 East",
-                "westId": "45",
+                "westId": 45,
                 "westShikona": "Terunofuji",
                 "westRank": "Komusubi 1 East",
                 "kimarite": "abisetaoshi",
-                "winnerId": "45",
+                "winnerId": 45,
                 "winnerEn": "Terunofuji",
                 "winnerJp": "",
             }
@@ -158,3 +158,20 @@ async def test_get_rikishi_opponent_matches_no_basho():
     assert len(response.matches) == 1
     assert response.kimarite_wins == {"oshidashi": 4, "tsukiotoshi": 1}
     assert response.kimarite_losses == {"abisetaoshi": 1, "hatakikomi": 2}
+
+    first_match = response.matches[0]
+    assert isinstance(first_match, Match)
+    assert first_match.basho_id == "202401"
+    assert first_match.division == "Makuuchi"
+    assert first_match.day == TEST_DAY
+    assert first_match.match_no == TEST_MATCH_NO
+    assert first_match.east_id == 1
+    assert first_match.east_shikona == "Takakeisho"
+    assert first_match.east_rank == "Ozeki 1 East"
+    assert first_match.west_id == TEST_WEST_ID
+    assert first_match.west_shikona == "Terunofuji"
+    assert first_match.west_rank == "Komusubi 1 East"
+    assert first_match.kimarite == "abisetaoshi"
+    assert first_match.winner_id == TEST_WINNER_ID
+    assert first_match.winner_en == "Terunofuji"
+    assert first_match.winner_jp == ""

@@ -25,14 +25,14 @@ async def test_get_torikumi_success():
                 "division": "Makuuchi",
                 "day": 1,
                 "matchNo": 1,
-                "eastId": "29",
+                "eastId": 29,
                 "eastShikona": "Takakeisho",
                 "eastRank": "Ozeki 1 East",
-                "westId": "41",
+                "westId": 41,
                 "westShikona": "Terunofuji",
                 "westRank": "Yokozuna 1 East",
                 "kimarite": "oshidashi",
-                "winnerId": "41",
+                "winnerId": 41,
                 "winnerEn": "Terunofuji",
                 "winnerJp": "照ノ富士",
             }
@@ -84,13 +84,14 @@ async def test_get_torikumi_success():
             assert isinstance(match, Match)
             assert match.id == "202305-1-1-29-41"
             assert match.match_no == 1
-            assert match.east_id == "29"
+            assert match.east_id == 29
             assert match.east_shikona == "Takakeisho"
             assert match.east_rank == "Ozeki 1 East"
-            assert match.west_id == "41"
+            assert match.west_id == 41
             assert match.west_shikona == "Terunofuji"
             assert match.west_rank == "Yokozuna 1 East"
-            assert match.winner_id == "41"
+            assert match.kimarite == "oshidashi"
+            assert match.winner_id == 41
             assert match.winner_en == "Terunofuji"
             assert match.winner_jp == "照ノ富士"
 

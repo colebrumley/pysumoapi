@@ -12,22 +12,20 @@ class RikishiBanzuke(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    id: str = Field(..., description="Rikishi ID")
+    side: str = Field(..., description="Side (East or West)")
+    rikishi_id: int = Field(..., alias="rikishiID", description="Rikishi ID")
     shikona_en: str = Field(
         ..., alias="shikonaEn", description="Rikishi's English shikona"
     )
-    shikona_jp: str = Field(
-        ..., alias="shikonaJp", description="Rikishi's Japanese shikona"
+    shikona_jp: Optional[str] = Field(
+        None, alias="shikonaJp", description="Rikishi's Japanese shikona"
     )
+    rank_value: Optional[int] = Field(None, description="Numerical rank value")
     rank: str = Field(..., description="Rikishi's rank")
-    heya: str = Field(..., description="Rikishi's heya")
-    height: Optional[int] = Field(None, description="Rikishi's height in cm")
-    weight: Optional[int] = Field(None, description="Rikishi's weight in kg")
-    birth_date: Optional[str] = Field(
-        None, alias="birthDate", description="Rikishi's birth date"
-    )
-    debut: Optional[str] = Field(None, description="Rikishi's debut date")
-    matches: List[Match] = Field(
+    wins: int = Field(0, description="Number of wins")
+    losses: int = Field(0, description="Number of losses")
+    absences: int = Field(0, description="Number of absences")
+    record: List[Match] = Field(
         default_factory=list, description="List of matches for this rikishi"
     )
 
@@ -39,6 +37,9 @@ class Banzuke(BaseModel):
 
     basho_id: str = Field(..., alias="bashoId", description="Basho ID in YYYYMM format")
     division: str = Field(..., description="Division name")
-    rikishi: List[RikishiBanzuke] = Field(
-        ..., description="List of rikishi in the division"
+    east: List[RikishiBanzuke] = Field(
+        ..., description="List of rikishi on the east side"
+    )
+    west: List[RikishiBanzuke] = Field(
+        ..., description="List of rikishi on the west side"
     )

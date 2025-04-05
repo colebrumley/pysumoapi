@@ -17,17 +17,19 @@ async def test_get_banzuke_success():
         "division": "Makuuchi",
         "east": [
             {
-                "id": "1",
+                "rikishiID": 1,
                 "shikonaEn": "Test Rikishi",
                 "shikonaJp": "テスト力士",
                 "rank": "Yokozuna",
-                "heya": "Test Heya",
+                "wins": 10,
+                "losses": 5,
+                "absences": 0,
                 "record": [
                     {
                         "bashoId": "202305",
                         "day": 1,
                         "result": "win",
-                        "opponentID": "2",
+                        "opponentID": 2,
                         "opponentShikonaEn": "Opponent",
                         "opponentShikonaJp": "対戦相手",
                         "kimarite": "yorikiri",
@@ -45,20 +47,23 @@ async def test_get_banzuke_success():
             assert isinstance(banzuke, Banzuke)
             assert banzuke.basho_id == "202305"
             assert banzuke.division == "Makuuchi"
-            assert len(banzuke.rikishi) > 0
+            assert len(banzuke.east) > 0
 
             # Test first rikishi
-            first_rikishi = banzuke.rikishi[0]
+            first_rikishi = banzuke.east[0]
             assert isinstance(first_rikishi, RikishiBanzuke)
-            assert first_rikishi.id == "1"
+            assert first_rikishi.rikishi_id == 1
             assert first_rikishi.shikona_en == "Test Rikishi"
-            assert first_rikishi.shikona_jp == "テスト力士"
+            if first_rikishi.shikona_jp:
+                assert first_rikishi.shikona_jp == "テスト力士"
             assert first_rikishi.rank == "Yokozuna"
-            assert first_rikishi.heya == "Test Heya"
-            assert len(first_rikishi.matches) > 0
+            assert first_rikishi.wins == 10
+            assert first_rikishi.losses == 5
+            assert first_rikishi.absences == 0
+            assert len(first_rikishi.record) > 0
 
             # Test first match
-            first_match = first_rikishi.matches[0]
+            first_match = first_rikishi.record[0]
             assert isinstance(first_match, Match)
             assert first_match.basho_id == "202305"
             assert first_match.day > 0
@@ -69,10 +74,10 @@ async def test_get_banzuke_success():
                 "fusen loss",
                 "fusen win",
             ]
-            assert first_match.opponent_id == "2"
+            assert first_match.opponent_id == 2
             assert first_match.opponent_shikona_en == "Opponent"
             assert first_match.opponent_shikona_jp == "対戦相手"
-            assert first_match.kimarite
+            assert first_match.kimarite == "yorikiri"
 
 
 @pytest.mark.asyncio

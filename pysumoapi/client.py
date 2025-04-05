@@ -37,9 +37,16 @@ class SumoClient:
         """Create an async context manager."""
         import ssl
 
-        import certifi
+        try:
+            import certifi
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        except (ImportError, FileNotFoundError):
+            # If certifi is not available or certificates are not found,
+            # create a default context without certificate verification
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
 
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
         self._client = httpx.AsyncClient(
             verify=ssl_context if self.verify_ssl else False
         )
@@ -63,12 +70,23 @@ class SumoClient:
 
         Returns:
             JSON response data
+
+        Raises:
+            httpx.HTTPStatusError: If the API returns an error status code
+            ValueError: If the API returns a 404 with a specific error message
         """
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
         url = f"{self.base_url}/api{path}"
         response = await self._client.request(method, url, params=params)
+        
+        # Handle 404 errors with specific error messages
+        if response.status_code == 404:
+            data = response.json()
+            if "error" in data:
+                raise ValueError(f"API Error: {data['error']}")
+            
         response.raise_for_status()
         return response.json()
 
@@ -249,23 +267,25 @@ class SumoClient:
 
         data = await self._make_request("GET", f"/basho/{basho_id}/banzuke/{division}")
 
-        # Combine east and west rikishi into a single list
-        rikishi_list = []
-        for rikishi in data.get("east", []) + data.get("west", []):
-            if "record" in rikishi:
-                rikishi["matches"] = [
-                    Match.from_banzuke(match) for match in rikishi["record"]
-                ]
-                del rikishi["record"]
-            rikishi_list.append(rikishi)
+        # Process east and west sides
+        for side in ["east", "west"]:
+            if side in data:
+                for rikishi in data[side]:
+                    # Add side to each rikishi
+                    rikishi["side"] = side.title()
+                    # Convert record to Match objects
+                    if "record" in rikishi:
+                        # Add basho_id to each match record
+                        for match in rikishi["record"]:
+                            match["bashoId"] = basho_id
+                        rikishi["record"] = [
+                            Match.from_banzuke(match) for match in rikishi["record"]
+                        ]
 
-        return Banzuke.model_validate(
-            {
-                "bashoId": data["bashoId"],
-                "division": data["division"],
-                "rikishi": rikishi_list,
-            }
-        )
+        # Ensure bashoId is set
+        data["bashoId"] = basho_id
+
+        return Banzuke.model_validate(data)
 
     async def get_torikumi(self, basho_id: str, division: str, day: int) -> Torikumi:
         """Get torikumi details for a specific basho, division, and day.
@@ -318,6 +338,20 @@ class SumoClient:
             data["torikumi"] = [
                 Match.from_torikumi(match) for match in data["torikumi"]
             ]
+            
+        # Handle both 'bashoId' and 'date' fields in the response
+        if "bashoId" not in data and "date" in data:
+            data["bashoId"] = data["date"]
+
+        # Add division and day fields
+        data["division"] = division
+        data["day"] = day
+
+        # Convert rikishiId to string in specialPrizes
+        if "specialPrizes" in data:
+            for prize in data["specialPrizes"]:
+                if "rikishiId" in prize:
+                    prize["rikishiId"] = str(prize["rikishiId"])
 
         return Torikumi.model_validate(data)
 

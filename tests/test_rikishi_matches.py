@@ -28,13 +28,13 @@ async def test_get_rikishi_matches_success():
                 "division": "Makuuchi",
                 "day": 1,
                 "matchNo": 1,
-                "eastId": "1",
+                "eastId": 1,
                 "eastShikona": "Test East",
                 "eastRank": "M1",
-                "westId": str(TEST_WEST_ID),
+                "westId": TEST_WEST_ID,
                 "westShikona": "Test West",
                 "westRank": "M2",
-                "winnerId": "1",
+                "winnerId": 1,
                 "winnerEn": "Test East",
                 "winnerJp": "テスト東",
                 "kimarite": "yorikiri",
@@ -64,13 +64,13 @@ async def test_get_rikishi_matches_success():
     assert first_match.division == "Makuuchi"
     assert first_match.day == 1
     assert first_match.match_no == 1
-    assert first_match.east_id == "1"
+    assert first_match.east_id == 1
     assert first_match.east_shikona == "Test East"
     assert first_match.east_rank == "M1"
-    assert first_match.west_id == str(TEST_WEST_ID)
+    assert first_match.west_id == TEST_WEST_ID
     assert first_match.west_shikona == "Test West"
     assert first_match.west_rank == "M2"
-    assert first_match.winner_id == "1"
+    assert first_match.winner_id == 1
     assert first_match.winner_en == "Test East"
     assert first_match.winner_jp == "テスト東"
     assert first_match.kimarite == "yorikiri"
@@ -105,13 +105,13 @@ async def test_get_rikishi_matches_no_basho():
                 "division": "Makuuchi",
                 "day": 1,
                 "matchNo": 1,
-                "eastId": "1",
+                "eastId": 1,
                 "eastShikona": "Test East",
                 "eastRank": "M1",
-                "westId": "2",
+                "westId": 2,
                 "westShikona": "Test West",
                 "westRank": "M2",
-                "winnerId": "1",
+                "winnerId": 1,
                 "winnerEn": "Test East",
                 "winnerJp": "テスト東",
                 "kimarite": "yorikiri",
@@ -134,3 +134,20 @@ async def test_get_rikishi_matches_no_basho():
     assert response.skip == 0
     assert response.total == 1
     assert len(response.records) == 1
+
+    first_match = response.records[0]
+    assert isinstance(first_match, Match)
+    assert first_match.basho_id == "202401"
+    assert first_match.division == "Makuuchi"
+    assert first_match.day == 1
+    assert first_match.match_no == 1
+    assert first_match.east_id == 1
+    assert first_match.east_shikona == "Test East"
+    assert first_match.east_rank == "M1"
+    assert first_match.west_id == 2
+    assert first_match.west_shikona == "Test West"
+    assert first_match.west_rank == "M2"
+    assert first_match.winner_id == 1
+    assert first_match.winner_en == "Test East"
+    assert first_match.winner_jp == "テスト東"
+    assert first_match.kimarite == "yorikiri"

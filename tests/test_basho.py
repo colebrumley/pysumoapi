@@ -58,13 +58,7 @@ async def test_get_basho_success():
     }
 
     async with SumoClient() as client:
-        with patch.object(
-            client._client,
-            "request",
-            return_value=AsyncMock(
-                json=lambda: mock_response, raise_for_status=lambda: None
-            ),
-        ):
+        with patch.object(client, "_make_request", return_value=mock_response):
             response = await client.get_basho(basho_id)
 
     assert isinstance(response, Basho)

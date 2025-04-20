@@ -75,8 +75,7 @@ async def test_get_banzuke_success():
                 "fusen win",
             ]
             assert first_match.opponent_id == 2
-            assert first_match.opponent_shikona_en == "Opponent"
-            assert first_match.opponent_shikona_jp == "対戦相手"
+            assert first_match.opponent_shikona == "Opponent"
             assert first_match.kimarite == "yorikiri"
 
 

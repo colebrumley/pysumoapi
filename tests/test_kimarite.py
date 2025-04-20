@@ -1,6 +1,7 @@
 """Tests for the kimarite endpoint."""
 
 import pytest
+from unittest.mock import patch
 
 from pysumoapi.client import SumoClient
 from pysumoapi.models import KimariteResponse
@@ -15,10 +16,46 @@ TEST_MAX_DAY = 15
 @pytest.mark.asyncio
 async def test_get_kimarite_success():
     """Test successful retrieval of kimarite statistics."""
+    mock_response = {
+        "sortField": "count",
+        "sortOrder": "desc",
+        "limit": TEST_LIMIT,
+        "skip": 0,
+        "total": TEST_LIMIT,
+        "records": [
+            {
+                "kimarite": "yorikiri",
+                "count": 100,
+                "lastUsage": "202401-15",
+            },
+            {
+                "kimarite": "oshidashi",
+                "count": 90,
+                "lastUsage": "202401-14",
+            },
+            {
+                "kimarite": "hatakikomi",
+                "count": 80,
+                "lastUsage": "202401-13",
+            },
+            {
+                "kimarite": "uwatenage",
+                "count": 70,
+                "lastUsage": "202401-12",
+            },
+            {
+                "kimarite": "tsukidashi",
+                "count": 60,
+                "lastUsage": "202401-11",
+            },
+        ],
+    }
+
     async with SumoClient() as client:
-        response = await client.get_kimarite(
-            sort_field="count", sort_order="desc", limit=TEST_LIMIT
-        )
+        with patch.object(client, "_make_request", return_value=mock_response):
+            response = await client.get_kimarite(
+                sort_field="count", sort_order="desc", limit=TEST_LIMIT
+            )
 
         # Verify response type
         assert isinstance(response, KimariteResponse)
@@ -49,7 +86,7 @@ async def test_get_kimarite_success():
 @pytest.mark.asyncio
 async def test_get_kimarite_invalid_sort_field():
     """Test handling of invalid sort field."""
-    async with SumoClient(verify_ssl=False) as client:
+    async with SumoClient() as client:
         with pytest.raises(ValueError):
             await client.get_kimarite(sort_field="invalid_field")
 

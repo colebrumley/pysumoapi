@@ -29,6 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.24.0",
+    "httpx-retries>=0.3.1",
     "pydantic>=2.0.0",
     "requests>=2.32.3",
     "certifi>=2024.2.0",

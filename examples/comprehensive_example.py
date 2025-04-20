@@ -19,7 +19,7 @@ This script shows how to:
 
 import asyncio
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import httpx
 
@@ -30,69 +30,129 @@ from pysumoapi.models.shikonas import Shikona
 
 async def get_rikishi_career_summary(client: SumoClient, rikishi_id: int) -> dict:
     """Get a comprehensive career summary for a rikishi."""
-    # Get basic rikishi info
-    rikishi = await client.get_rikishi(rikishi_id)
+    try:
+        # Get basic rikishi info
+        rikishi = await client.get_rikishi(str(rikishi_id))
 
-    # Get rikishi stats
-    stats = await client.get_rikishi_stats(rikishi_id)
+        # Get rikishi stats
+        stats = await client.get_rikishi_stats(str(rikishi_id))
 
-    # Get shikona history
-    shikonas = await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
+        # Get shikona history
+        shikonas = await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
 
-    # Get measurements history
-    measurements = await client.get_measurements(
-        rikishi_id=rikishi_id, sort_order="asc"
-    )
+        # Get measurements history
+        measurements = await client.get_measurements(
+            rikishi_id=rikishi_id, sort_order="asc"
+        )
 
-    # Get rank history
-    ranks = await client.get_ranks(rikishi_id=rikishi_id, sort_order="asc")
+        # Get rank history
+        ranks = await client.get_ranks(rikishi_id=rikishi_id, sort_order="asc")
 
-    return {
-        "rikishi": rikishi,
-        "stats": stats,
-        "shikonas": shikonas,
-        "measurements": measurements,
-        "ranks": ranks,
-    }
+        # Process the career progression
+        career_analysis = analyze_career_progression(ranks, shikonas)
+
+        return {
+            "rikishi": rikishi,
+            "stats": stats,
+            "shikonas": shikonas,
+            "measurements": measurements,
+            "ranks": ranks,
+            "career_analysis": career_analysis
+        }
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
-async def get_kimarite_analysis(client: SumoClient, kimarite: str = None) -> dict:
+async def get_kimarite_analysis(client: SumoClient, kimarite: Optional[str] = None) -> dict:
     """Get kimarite statistics and recent matches."""
-    # Get general kimarite statistics
-    kimarite_stats = await client.get_kimarite(
-        sort_field="count", sort_order="desc", limit=10
-    )
-
-    # If a specific kimarite is provided, get recent matches using it
-    kimarite_matches = None
-    if kimarite:
-        kimarite_matches = await client.get_kimarite_matches(
-            kimarite=kimarite, sort_order="desc", limit=5
+    try:
+        # Get general kimarite statistics
+        kimarite_stats = await client.get_kimarite(
+            sort_field="count", sort_order="desc", limit=10
         )
 
-    return {
-        "stats": kimarite_stats,
-        "matches": kimarite_matches,
-    }
+        # If a specific kimarite is provided, get recent matches using it
+        kimarite_matches = None
+        if kimarite:
+            kimarite_matches = await client.get_kimarite_matches(
+                kimarite=kimarite, sort_order="desc", limit=5
+            )
+
+        return {
+            "stats": kimarite_stats,
+            "matches": kimarite_matches,
+        }
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
-async def get_rikishi_matches_analysis(client: SumoClient, rikishi_id: int, opponent_id: int = None) -> dict:
-    """Get matches for a rikishi and optionally against a specific opponent."""
-    # Get all matches for the rikishi
-    matches = await client.get_rikishi_matches(rikishi_id=rikishi_id)
+async def get_rikishi_matches_analysis(
+    client: SumoClient, 
+    rikishi_identifier: Union[int, str], 
+    opponent_identifier: Optional[Union[int, str]] = None
+) -> dict:
+    """
+    Get matches for a rikishi and optionally against a specific opponent.
     
-    # If an opponent is specified, get matches between the two rikishi
-    opponent_matches = None
-    if opponent_id:
-        opponent_matches = await client.get_rikishi_opponent_matches(
-            rikishi_id=rikishi_id,
-            opponent_id=opponent_id
-        )
-    
-    return {
-        "matches": matches,
-        "opponent_matches": opponent_matches
-    }
+    Args:
+        client: SumoClient instance
+        rikishi_identifier: Either rikishi ID (int) or name (str)
+        opponent_identifier: Optional opponent ID (int) or name (str)
+        
+    Returns:
+        Dictionary containing matches data
+    """
+    try:
+        # Get rikishi ID if name was provided
+        rikishi_id = int(rikishi_identifier) if isinstance(rikishi_identifier, (int, str)) and str(rikishi_identifier).isdigit() else None
+        if rikishi_id is None and isinstance(rikishi_identifier, str):
+            rikishis = await client.get_rikishis(name=rikishi_identifier, limit=1)
+            if not rikishis or not rikishis.records:
+                raise ValueError(f"No rikishi found with name: {rikishi_identifier}")
+            rikishi_id = int(rikishis.records[0].id)
+            
+        # Get opponent ID if name was provided
+        opponent_id = int(opponent_identifier) if isinstance(opponent_identifier, (int, str)) and str(opponent_identifier).isdigit() else None
+        if opponent_id is None and isinstance(opponent_identifier, str):
+            opponents = await client.get_rikishis(name=opponent_identifier, limit=1)
+            if not opponents or not opponents.records:
+                raise ValueError(f"No opponent found with name: {opponent_identifier}")
+            opponent_id = int(opponents.records[0].id)
+        
+        # Get all matches for the rikishi
+        matches = await client.get_rikishi_matches(rikishi_id=rikishi_id)
+        
+        # If an opponent is specified, get matches between the two rikishi
+        opponent_matches = None
+        if opponent_id:
+            opponent_matches = await client.get_rikishi_opponent_matches(
+                rikishi_id=rikishi_id,
+                opponent_id=opponent_id
+            )
+        
+        return {
+            "rikishi_id": rikishi_id,
+            "opponent_id": opponent_id,
+            "matches": matches,
+            "opponent_matches": opponent_matches
+        }
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
 async def get_basho_details(client: SumoClient, basho_id: str) -> dict:
@@ -112,27 +172,37 @@ async def get_basho_details(client: SumoClient, basho_id: str) -> dict:
             "banzuke": banzuke,
             "torikumi": torikumi
         }
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
     except Exception as e:
-        print(f"Error in get_basho_details: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"An error occurred: {e!s}")
         raise
 
 
-async def search_rikishi(client: SumoClient, heya: str = None) -> dict:
+async def search_rikishi(client: SumoClient, heya: Optional[str] = None) -> dict:
     """Search for rikishi using various filters."""
-    # Get list of rikishi from a specific heya
-    rikishis = await client.get_rikishis(
-        heya=heya,
-        measurements=True,
-        ranks=True,
-        shikonas=True,
-        limit=5
-    )
-    
-    return {
-        "rikishis": rikishis
-    }
+    try:
+        # Get list of rikishi from a specific heya
+        rikishis = await client.get_rikishis(
+            heya=heya,
+            measurements=True,
+            ranks=True,
+            shikonas=True,
+            limit=5
+        )
+        
+        return {
+            "rikishis": rikishis
+        }
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
 def analyze_career_progression(ranks: List[Rank], shikonas: List[Shikona]) -> Dict:
@@ -254,164 +324,168 @@ def display_career_summary(rikishi_id: int, analysis: Dict) -> None:
 
 
 def display_kimarite_analysis(analysis: Dict, kimarite: str = None) -> None:
-    """Display kimarite statistics and matches."""
+    """Display kimarite statistics and matches in a formatted way."""
     print("\nKimarite Statistics (Top 10):")
     for stat in analysis["stats"].records:
-        print(f"{stat.kimarite}: {stat.count} times")
+        # Show all kimarite entries, including empty ones which are valid
+        print(f"{stat.kimarite or '(no kimarite)'}: {stat.count} times")
 
     if kimarite and analysis["matches"]:
         print(f"\nRecent Matches using {kimarite}:")
         for match in analysis["matches"].records:
-            print(f"Basho {match.basho_id} Day {match.day}: {match.east_shikona} vs {match.west_shikona} - Winner: {match.winner_en}")
+            if hasattr(match, 'east_shikona') and hasattr(match, 'west_shikona') and hasattr(match, 'winner_en'):
+                print(f"Basho {match.basho_id} Day {match.day}: "
+                      f"{match.east_shikona} vs {match.west_shikona} - "
+                      f"Winner: {match.winner_en}")
 
 
-def display_matches_analysis(analysis: Dict, opponent_id: int = None) -> None:
-    """Display rikishi matches and opponent matches if available."""
-    print("\nRecent Matches:")
-    for match in analysis["matches"].records[:5]:  # Show last 5 matches
-        print(f"Basho {match.basho_id} Day {match.day}: {match.east_shikona} vs {match.west_shikona} - Winner: {match.winner_en}")
+async def display_rikishi_matches_analysis(
+    client: SumoClient, 
+    rikishi_identifier: Union[int, str], 
+    opponent_identifier: Optional[Union[int, str]] = None
+) -> None:
+    """
+    Display matches analysis for a rikishi and optionally against a specific opponent.
     
-    if opponent_id and analysis["opponent_matches"]:
-        print(f"\nMatches against Rikishi {opponent_id}:")
-        for match in analysis["opponent_matches"].matches:  # Changed from records to matches
-            try:
-                # Handle potential missing fields
-                basho_id = getattr(match, "basho_id", "Unknown")
-                day = getattr(match, "day", 0)
-                east_shikona = getattr(match, "east_shikona", "Unknown")
-                west_shikona = getattr(match, "west_shikona", "Unknown")
-                winner_en = getattr(match, "winner_en", "Unknown")
+    Args:
+        client: SumoClient instance
+        rikishi_identifier: Either rikishi ID (int) or name (str)
+        opponent_identifier: Optional opponent ID (int) or name (str)
+    """
+    print("\n=== Rikishi Matches Analysis ===")
+    try:
+        result = await get_rikishi_matches_analysis(
+            client, 
+            rikishi_identifier, 
+            opponent_identifier
+        )
+        
+        # Get rikishi name for display
+        rikishi = await client.get_rikishi(str(result["rikishi_id"]))
+        rikishi_name = rikishi.shikona_en if rikishi else f"Rikishi {result['rikishi_id']}"
+        
+        # Get opponent name if applicable
+        opponent_name = None
+        if result["opponent_id"]:
+            opponent = await client.get_rikishi(str(result["opponent_id"]))
+            opponent_name = opponent.shikona_en if opponent else f"Opponent {result['opponent_id']}"
+        
+        print(f"\nMatches for {rikishi_name}:")
+        if result["matches"] and hasattr(result["matches"], "records"):
+            for match in result["matches"].records[:5]:  # Show first 5 matches
+                if hasattr(match, 'rikishi_shikona') and hasattr(match, 'opponent_shikona') and hasattr(match, 'kimarite'):
+                    match_info = f"Basho {match.basho_id} Day {match.day}: "
+                    match_info += f"{match.rikishi_shikona} vs {match.opponent_shikona} "
+                    match_info += f"({match.kimarite or '(no kimarite)'})"
+                    print(f"- {match_info}")
+            
+        if opponent_name and result["opponent_matches"] and hasattr(result["opponent_matches"], "records"):
+            print(f"\nMatches specifically against {opponent_name}:")
+            for match in result["opponent_matches"].records[:5]:  # Show first 5 matches
+                if hasattr(match, 'kimarite'):
+                    match_info = f"Basho {match.basho_id} Day {match.day}"
+                    match_info += f": {match.kimarite or '(no kimarite)'}"
+                    print(f"- {match_info}")
                 
-                print(f"Basho {basho_id} Day {day}: {east_shikona} vs {west_shikona} - Winner: {winner_en}")
-            except Exception as e:
-                print(f"Error displaying match: {e}")
-                # Print raw match data for debugging
-                print(f"Match data: {match}")
+    except Exception as e:
+        print(f"Error displaying matches analysis: {e!s}")
+        raise
 
 
 def display_basho_details(analysis: Dict) -> None:
-    """Display comprehensive basho tournament details."""
+    """Display comprehensive basho details."""
     basho = analysis["basho"]
-    print(f"\nBasho Tournament: {basho.date}")
+    banzuke = analysis["banzuke"]
+    torikumi = analysis["torikumi"]
+
+    print("\nBasho Details:")
+    print("=" * 50 + "\n")
+    print(f"Basho {basho.date}:")
+    print("-" * 30)
     print(f"Location: {basho.location}")
     print(f"Start Date: {basho.start_date}")
-    print(f"End Date: {basho.end_date}")
-    
-    print("\nMakuuchi Banzuke:")
-    print("East Side:")
-    for rikishi in analysis["banzuke"].east:
-        print(f"{rikishi.rank}: {rikishi.shikona_en}")
-    print("\nWest Side:")
-    for rikishi in analysis["banzuke"].west:
-        print(f"{rikishi.rank}: {rikishi.shikona_en}")
-    
-    print("\nDay 1 Torikumi:")
-    for match in analysis["torikumi"].matches:
-        print(f"Match {match.match_no}: {match.east_shikona} vs {match.west_shikona}")
+    print(f"End Date: {basho.end_date}\n")
+
+    print("Banzuke (Makuuchi):")
+    print("-" * 30)
+    # Show top 5 ranks from east and west sides
+    for i in range(min(5, len(banzuke.east))):
+        east = banzuke.east[i]
+        west = banzuke.west[i] if i < len(banzuke.west) else None
+        if west:
+            print(f"{east.rank}: {east.shikona_en} / {west.shikona_en}")
+        else:
+            print(f"{east.rank}: {east.shikona_en}")
+
+    print("\nDay 1 Torikumi (Makuuchi):")
+    print("-" * 30)
+    if torikumi and torikumi.matches:
+        for match in torikumi.matches[:5]:  # Show first 5 matches
+            print(f"{match.east_shikona} vs {match.west_shikona}")
+            if match.winner_en:
+                print(f"Winner: {match.winner_en}")
+            if match.kimarite:
+                print(f"Technique: {match.kimarite}")
+            print()
+    else:
+        print("No matches available for Day 1")
 
 
 def display_rikishi_search(analysis: Dict) -> None:
-    """Display results of rikishi search."""
-    print("\nSearch Results:")
-    for rikishi in analysis["rikishis"].records:
-        print(f"\nRikishi ID: {rikishi.id}")
-        print(f"Name: {rikishi.shikona_en}")
-        print(f"Heya: {rikishi.heya}")
-        # Rikishi model has direct height and weight fields, not a nested measurements object
-        print(f"Height: {rikishi.height}cm")
-        print(f"Weight: {rikishi.weight}kg")
+    """Display rikishi search results in a formatted way."""
+    print("\nRikishi Search Results:")
+    print("=" * 50)
+
+    if analysis["rikishis"]:
+        for rikishi in analysis["rikishis"].records:
+            print(f"\nRikishi ID: {rikishi.id}")
+            print("-" * 30)
+            print(f"Name: {rikishi.shikona_en}")
+            print(f"Heya: {rikishi.heya}")
+            if rikishi.current_rank:
+                print(f"Current Rank: {rikishi.current_rank}")
+            print("-" * 30)
 
 
 async def main():
-    """Example usage of multiple endpoints."""
-    async with SumoClient() as client:
+    """Run comprehensive examples of PySumoAPI usage."""
+    # Initialize client with retry configuration and correct base URL
+    client = SumoClient(
+        base_url="https://sumo-api.com/api",
+        retries=3,
+        timeout=30.0
+    )
+    
+    async with client:
         try:
-            # Example rikishi IDs
-            rikishi_id = 1511  # Example rikishi ID
-            opponent_id = 1512  # Example opponent ID
-            basho_id = "202305"  # Example basho ID
-            heya = "Miyagino"  # Example heya
+            # Example 1: Get career summary for a rikishi
+            rikishi_id = 1511  # Terunofuji
+            career_summary = await get_rikishi_career_summary(client, rikishi_id)
+            display_career_summary(rikishi_id, career_summary["career_analysis"])
 
-            # Get career summary for a specific rikishi
-            summary = await get_rikishi_career_summary(client, rikishi_id)
+            # Example 2: Analyze kimarite usage
+            kimarite_analysis = await get_kimarite_analysis(client, "yoritaoshi")
+            display_kimarite_analysis(kimarite_analysis, "yoritaoshi")
 
-            # Print basic info
-            rikishi = summary["rikishi"]
-            print("\nRikishi Information:")
-            print(f"Name: {rikishi.shikona_en}")
-            print(f"Heya: {rikishi.heya}")
-            print(f"Birth Date: {rikishi.birth_date.strftime('%Y-%m-%d')}")
-            print(f"Height: {rikishi.height}cm")
-            print(f"Weight: {rikishi.weight}kg")
+            # Example 3: Get matches analysis
+            await display_rikishi_matches_analysis(client, rikishi_id)
 
-            # Print career stats
-            stats = summary["stats"]
-            print("\nCareer Statistics:")
-            print(f"Total Basho: {stats.basho}")
-            print(f"Total Matches: {stats.total_matches}")
-            print(f"Wins: {stats.total_wins}")
-            print(f"Losses: {stats.total_losses}")
-            print(f"Absences: {stats.total_absences}")
-            print(f"Win Rate: {stats.total_wins / stats.total_matches:.2%}")
-            print(f"Yusho: {stats.yusho}")
-
-            # Print division stats
-            print("\nDivision Statistics:")
-            for division in ["Makuuchi", "Juryo", "Makushita", "Sandanme"]:
-                if hasattr(stats.total_by_division, division):
-                    print(f"\n{division}:")
-                    print(
-                        f"  Total Matches: {getattr(stats.total_by_division, division)}"
-                    )
-                    print(f"  Wins: {getattr(stats.wins_by_division, division)}")
-                    print(f"  Losses: {getattr(stats.loss_by_division, division)}")
-                    print(f"  Absences: {getattr(stats.absence_by_division, division)}")
-                    print(f"  Yusho: {getattr(stats.yusho_by_division, division)}")
-
-            # Print special prizes
-            print("\nSpecial Prizes:")
-            print(f"Gino-sho: {stats.sansho.Gino_sho}")
-            print(f"Kanto-sho: {stats.sansho.Kanto_sho}")
-            print(f"Shukun-sho: {stats.sansho.Shukun_sho}")
-
-            # Print shikona history
-            print("\nShikona History:")
-            for shikona in summary["shikonas"]:
-                print(f"Basho: {shikona.basho_id}, Shikona: {shikona.shikona_en}")
-
-            # Print measurements history
-            print("\nMeasurements History:")
-            for measurement in summary["measurements"]:
-                print(f"Basho: {measurement.basho_id}")
-                print(f"  Height: {measurement.height}cm")
-                print(f"  Weight: {measurement.weight}kg")
-
-            # Print rank history
-            print("\nRank History:")
-            for rank in summary["ranks"]:
-                print(f"Basho: {rank.basho_id}, Rank: {rank.rank}")
-
-            # Get and display kimarite analysis
-            kimarite_analysis = await get_kimarite_analysis(client, "yorikiri")
-            display_kimarite_analysis(kimarite_analysis, "yorikiri")
-
-            # Get and display matches analysis
-            matches_analysis = await get_rikishi_matches_analysis(client, rikishi_id, opponent_id)
-            display_matches_analysis(matches_analysis, opponent_id)
-
-            # Get and display basho details
+            # Example 4: Get basho details
+            basho_id = "202401"  # January 2024 basho
             basho_details = await get_basho_details(client, basho_id)
             display_basho_details(basho_details)
 
-            # Search for rikishi and display results
-            rikishi_search = await search_rikishi(client, heya)
-            display_rikishi_search(rikishi_search)
+            # Example 5: Search for rikishi
+            search_results = await search_rikishi(client, heya="Isegahama")
+            display_rikishi_search(search_results)
 
         except httpx.HTTPStatusError as e:
             print(f"HTTP error occurred: {e.response.status_code}")
             print(f"Response text: {e.response.text}")
+            sys.exit(1)
         except Exception as e:
             print(f"An error occurred: {e!s}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

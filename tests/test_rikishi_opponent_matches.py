@@ -51,13 +51,7 @@ async def test_get_rikishi_opponent_matches_success():
     }
 
     async with SumoClient() as client:
-        with patch.object(
-            client._client,
-            "request",
-            return_value=AsyncMock(
-                json=lambda: mock_response, raise_for_status=lambda: None
-            ),
-        ):
+        with patch.object(client, "_make_request", return_value=mock_response):
             response = await client.get_rikishi_opponent_matches(
                 rikishi_id, opponent_id, basho_id
             )
@@ -142,13 +136,7 @@ async def test_get_rikishi_opponent_matches_no_basho():
     }
 
     async with SumoClient() as client:
-        with patch.object(
-            client._client,
-            "request",
-            return_value=AsyncMock(
-                json=lambda: mock_response, raise_for_status=lambda: None
-            ),
-        ):
+        with patch.object(client, "_make_request", return_value=mock_response):
             response = await client.get_rikishi_opponent_matches(1, 45)
 
     assert isinstance(response, RikishiOpponentMatchesResponse)

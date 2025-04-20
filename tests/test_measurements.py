@@ -1,6 +1,7 @@
 """Tests for the measurements endpoint."""
 
 import pytest
+from unittest.mock import patch
 
 from pysumoapi.client import SumoClient
 from pysumoapi.models import Measurement
@@ -12,10 +13,28 @@ TEST_RIKISHI_ID = 1511
 @pytest.mark.asyncio
 async def test_get_measurements_by_basho_success():
     """Test successful retrieval of measurements by basho."""
+    mock_response = [
+        {
+            "id": "196001-1",
+            "bashoId": "196001",
+            "rikishiId": 1,
+            "height": 180,
+            "weight": 150,
+        },
+        {
+            "id": "195911-1",
+            "bashoId": "195911",
+            "rikishiId": 1,
+            "height": 180,
+            "weight": 148,
+        },
+    ]
+
     async with SumoClient() as client:
-        measurements = await client.get_measurements(
-            basho_id="196001", sort_order="desc"
-        )
+        with patch.object(client, "_make_request", return_value=mock_response):
+            measurements = await client.get_measurements(
+                basho_id="196001", sort_order="desc"
+            )
 
         # Verify response type
         assert isinstance(measurements, list)
@@ -37,10 +56,28 @@ async def test_get_measurements_by_basho_success():
 @pytest.mark.asyncio
 async def test_get_measurements_by_rikishi_success():
     """Test successful retrieval of measurements by rikishi."""
+    mock_response = [
+        {
+            "id": f"196001-{TEST_RIKISHI_ID}",
+            "bashoId": "196001",
+            "rikishiId": TEST_RIKISHI_ID,
+            "height": 180,
+            "weight": 150,
+        },
+        {
+            "id": f"195911-{TEST_RIKISHI_ID}",
+            "bashoId": "195911",
+            "rikishiId": TEST_RIKISHI_ID,
+            "height": 180,
+            "weight": 148,
+        },
+    ]
+
     async with SumoClient() as client:
-        measurements = await client.get_measurements(
-            rikishi_id=TEST_RIKISHI_ID, sort_order="asc"
-        )
+        with patch.object(client, "_make_request", return_value=mock_response):
+            measurements = await client.get_measurements(
+                rikishi_id=TEST_RIKISHI_ID, sort_order="asc"
+            )
 
         # Verify response type
         assert isinstance(measurements, list)

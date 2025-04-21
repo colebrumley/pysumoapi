@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import httpx
 import ssl
@@ -26,6 +26,7 @@ from pysumoapi.models import (
     ShikonasResponse,
     Torikumi,
 )
+from pysumoapi.params import Pagination, SortOrder
 
 
 class SumoClient:
@@ -420,17 +421,15 @@ class SumoClient:
     async def get_kimarite(
         self,
         sort_field: Optional[str] = None,
-        sort_order: Optional[str] = "asc",
-        limit: Optional[int] = None,
-        skip: Optional[int] = 0,
+        sort_order: SortOrder = SortOrder.desc,
+        pagination: Pagination | None = None,
     ) -> KimariteResponse:
         """Get statistics on kimarite usage.
 
         Args:
             sort_field: Field to sort by (count, kimarite, lastUsage)
             sort_order: Sort order (asc or desc)
-            limit: Number of records to return
-            skip: Number of records to skip
+            pagination: Optional pagination parameters
 
         Returns:
             KimariteResponse object containing kimarite statistics
@@ -444,25 +443,14 @@ class SumoClient:
                 "Invalid sort field. Must be one of: count, kimarite, lastUsage"
             )
 
-        if sort_order and sort_order not in ["asc", "desc"]:
-            raise ValueError("Sort order must be either 'asc' or 'desc'")
-
-        if limit is not None and limit <= 0:
-            raise ValueError("Limit must be a positive integer")
-
-        if skip < 0:
-            raise ValueError("Skip must be a non-negative integer")
-
         # Build query parameters
         params: Dict[str, Any] = {}
         if sort_field:
             params["sortField"] = sort_field
         if sort_order:
             params["sortOrder"] = sort_order
-        if limit is not None:
-            params["limit"] = limit
-        if skip is not None:
-            params["skip"] = skip
+        if pagination:
+            params.update(pagination.model_dump(exclude_none=True))
 
         data = await self.get("/kimarite", params=params)
         return KimariteResponse(**data)
@@ -470,17 +458,15 @@ class SumoClient:
     async def get_kimarite_matches(
         self,
         kimarite: str,
-        sort_order: Optional[str] = "asc",
-        limit: Optional[int] = None,
-        skip: Optional[int] = 0,
+        sort_order: SortOrder = SortOrder.desc,
+        pagination: Pagination | None = None,
     ) -> KimariteMatchesResponse:
         """Get matches where a specific kimarite was used.
 
         Args:
             kimarite: Name of the kimarite to search for
             sort_order: Sort order (asc or desc)
-            limit: Number of records to return (max 1000)
-            skip: Number of records to skip
+            pagination: Optional pagination parameters
 
         Returns:
             KimariteMatchesResponse object containing matches
@@ -492,35 +478,21 @@ class SumoClient:
         if not kimarite:
             raise ValueError("Kimarite cannot be empty")
 
-        if sort_order and sort_order not in ["asc", "desc"]:
-            raise ValueError("Sort order must be either 'asc' or 'desc'")
-
-        if limit is not None:
-            if limit <= 0:
-                raise ValueError("Limit must be a positive integer")
-            if limit > 1000:
-                raise ValueError("Limit cannot exceed 1000")
-
-        if skip < 0:
-            raise ValueError("Skip must be a non-negative integer")
-
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: Dict[str, Any] = {"kimarite": kimarite}
         if sort_order:
             params["sortOrder"] = sort_order
-        if limit is not None:
-            params["limit"] = limit
-        if skip is not None:
-            params["skip"] = skip
+        if pagination:
+            params.update(pagination.model_dump(exclude_none=True))
 
-        data = await self.get("/kimarite/{kimarite}", params={"kimarite": kimarite, **params})
+        data = await self.get("/kimarite/{kimarite}", params=params)
         return KimariteMatchesResponse(**data)
 
     async def get_measurements(
         self,
         basho_id: Optional[str] = None,
         rikishi_id: Optional[int] = None,
-        sort_order: Optional[str] = "desc",
+        sort_order: SortOrder = SortOrder.desc,
     ) -> MeasurementsResponse:
         """Get measurement changes by rikishi or basho.
 
@@ -545,7 +517,7 @@ class SumoClient:
         if rikishi_id is not None and rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
 
-        if sort_order and sort_order not in ["asc", "desc"]:
+        if not isinstance(sort_order, SortOrder):
             raise ValueError("Sort order must be either 'asc' or 'desc'")
 
         # Build query parameters
@@ -561,7 +533,7 @@ class SumoClient:
 
         # Sort by basho_id if requested
         if sort_order:
-            measurements.sort(key=lambda m: m.basho_id, reverse=(sort_order == "desc"))
+            measurements.sort(key=lambda m: m.basho_id, reverse=(sort_order == SortOrder.desc))
 
         return measurements
 

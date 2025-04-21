@@ -26,6 +26,7 @@ import httpx
 from pysumoapi.client import SumoClient
 from pysumoapi.models.ranks import Rank
 from pysumoapi.models.shikonas import Shikona
+from pysumoapi.params import Pagination, SortOrder
 
 
 async def get_rikishi_career_summary(client: SumoClient, rikishi_id: int) -> dict:
@@ -38,15 +39,15 @@ async def get_rikishi_career_summary(client: SumoClient, rikishi_id: int) -> dic
         stats = await client.get_rikishi_stats(str(rikishi_id))
 
         # Get shikona history
-        shikonas = await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
+        shikonas = await client.get_shikonas(rikishi_id=rikishi_id, sort_order=SortOrder.asc)
 
         # Get measurements history
         measurements = await client.get_measurements(
-            rikishi_id=rikishi_id, sort_order="asc"
+            rikishi_id=rikishi_id, sort_order=SortOrder.asc
         )
 
         # Get rank history
-        ranks = await client.get_ranks(rikishi_id=rikishi_id, sort_order="asc")
+        ranks = await client.get_ranks(rikishi_id=rikishi_id, sort_order=SortOrder.asc)
 
         # Process the career progression
         career_analysis = analyze_career_progression(ranks, shikonas)
@@ -73,14 +74,18 @@ async def get_kimarite_analysis(client: SumoClient, kimarite: Optional[str] = No
     try:
         # Get general kimarite statistics
         kimarite_stats = await client.get_kimarite(
-            sort_field="count", sort_order="desc", limit=10
+            sort_field="count",
+            sort_order=SortOrder.desc,
+            pagination=Pagination(limit=10)
         )
 
         # If a specific kimarite is provided, get recent matches using it
         kimarite_matches = None
         if kimarite:
             kimarite_matches = await client.get_kimarite_matches(
-                kimarite=kimarite, sort_order="desc", limit=5
+                kimarite=kimarite,
+                sort_order=SortOrder.desc,
+                pagination=Pagination(limit=5)
             )
 
         return {

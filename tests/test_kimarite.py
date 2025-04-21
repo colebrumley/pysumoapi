@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from pysumoapi.client import SumoClient
 from pysumoapi.models import KimariteResponse
+from pysumoapi.params import Pagination, SortOrder
 
 # Test constants
 TEST_LIMIT = 5
@@ -54,7 +55,9 @@ async def test_get_kimarite_success():
     async with SumoClient() as client:
         with patch.object(client, "_make_request", return_value=mock_response):
             response = await client.get_kimarite(
-                sort_field="count", sort_order="desc", limit=TEST_LIMIT
+                sort_field="count",
+                sort_order=SortOrder.desc,
+                pagination=Pagination(limit=TEST_LIMIT)
             )
 
         # Verify response type
@@ -92,32 +95,6 @@ async def test_get_kimarite_invalid_sort_field():
 
 
 @pytest.mark.asyncio
-async def test_get_kimarite_invalid_sort_order():
-    """Test handling of invalid sort order."""
-    async with SumoClient() as client:
-        with pytest.raises(
-            ValueError, match="Sort order must be either 'asc' or 'desc'"
-        ):
-            await client.get_kimarite(sort_order="invalid")
-
-
-@pytest.mark.asyncio
-async def test_get_kimarite_invalid_limit():
-    """Test handling of invalid limit."""
-    async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Limit must be a positive integer"):
-            await client.get_kimarite(limit=-1)
-
-
-@pytest.mark.asyncio
-async def test_get_kimarite_invalid_skip():
-    """Test handling of invalid skip."""
-    async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Skip must be a non-negative integer"):
-            await client.get_kimarite(skip=-1)
-
-
-@pytest.mark.asyncio
 async def test_get_kimarite_skip_zero():
     """Test that skip=0 is properly handled."""
     mock_response = {
@@ -137,7 +114,9 @@ async def test_get_kimarite_skip_zero():
     async with SumoClient() as client:
         with patch.object(client, "_make_request", return_value=mock_response):
             response = await client.get_kimarite(
-                sort_field="count", sort_order="desc", limit=TEST_LIMIT, skip=0
+                sort_field="count",
+                sort_order=SortOrder.desc,
+                pagination=Pagination(limit=TEST_LIMIT, skip=0)
             )
 
         # Verify response type

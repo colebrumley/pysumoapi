@@ -33,7 +33,7 @@ class SumoClient:
 
     def __init__(
         self,
-        base_url: str = "https://sumo.com/api",
+        base_url: str = "https://sumo-api.com/api",
         timeout: Optional[float] = None,
         retries: int = 3,
     ) -> None:
@@ -77,8 +77,8 @@ class SumoClient:
 
         Args:
             method: The HTTP method to use
-            path: The API path to request
-            params: Query parameters to include in the request
+            path: The API path to request, with path parameters in {param_name} format
+            params: Query parameters to include in the request, including path parameters
             json: JSON data to include in the request body
 
         Returns:
@@ -90,10 +90,21 @@ class SumoClient:
         if not self._client:
             raise RuntimeError("Client not initialized. Use 'async with' context manager.")
 
+        # Extract path parameters from params and format the path
+        path_params = {}
+        if params:
+            path_params = {k: v for k, v in params.items() if f"{{{k}}}" in path}
+            query_params = {k: v for k, v in params.items() if f"{{{k}}}" not in path}
+        else:
+            query_params = {}
+
+        # Format the path with path parameters
+        formatted_path = path.format(**path_params)
+
         response = await self._client.request(
             method=method,
-            url=path,
-            params=params,
+            url=formatted_path,
+            params=query_params,
             json=json,
         )
         response.raise_for_status()
@@ -148,12 +159,12 @@ class SumoClient:
 
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""
-        data = await self.get(f"/rikishi/{rikishi_id}")
+        data = await self.get("/rikishi/{rikishi_id}", params={"rikishi_id": rikishi_id})
         return Rikishi.model_validate(data)
 
     async def get_rikishi_stats(self, rikishi_id: str) -> RikishiStats:
         """Get statistics for a rikishi."""
-        data = await self.get(f"/rikishi/{rikishi_id}/stats")
+        data = await self.get("/rikishi/{rikishi_id}/stats", params={"rikishi_id": rikishi_id})
         return RikishiStats.model_validate(data)
 
     async def get_rikishis(
@@ -218,7 +229,7 @@ class SumoClient:
         if basho_id:
             params["bashoId"] = basho_id
 
-        data = await self.get(f"/rikishi/{rikishi_id}/matches", params=params)
+        data = await self.get("/rikishi/{rikishi_id}/matches", params={"rikishi_id": rikishi_id, **params})
         
         # Convert matches to use the unified Match model
         if "records" in data:
@@ -258,7 +269,7 @@ class SumoClient:
         if basho_id:
             params["bashoId"] = basho_id
 
-        data = await self.get(f"/rikishi/{rikishi_id}/matches/{opponent_id}", params=params)
+        data = await self.get("/rikishi/{rikishi_id}/matches/{opponent_id}", params={"rikishi_id": rikishi_id, "opponent_id": opponent_id, **params})
         return RikishiOpponentMatchesResponse.model_validate(data)
 
     async def get_basho(self, basho_id: str) -> Basho:
@@ -324,7 +335,7 @@ class SumoClient:
         if division not in valid_divisions:
             raise ValueError("Invalid division")
 
-        data = await self.get(f"/basho/{basho_id}/banzuke/{division}")
+        data = await self.get("/basho/{basho_id}/banzuke/{division}", params={"basho_id": basho_id, "division": division})
 
         # Process east and west sides
         for side in ["east", "west"]:
@@ -388,7 +399,7 @@ class SumoClient:
         if not 1 <= day <= 15:
             raise ValueError("Day must be between 1 and 15")
 
-        data = await self.get(f"/basho/{basho_id}/torikumi/{division}/{day}")
+        data = await self.get("/basho/{basho_id}/torikumi/{division}/{day}", params={"basho_id": basho_id, "division": division, "day": day})
 
         # Convert matches to use the unified Match model
         if "torikumi" in data:
@@ -403,12 +414,6 @@ class SumoClient:
         # Add division and day fields
         data["division"] = division
         data["day"] = day
-
-        # Convert rikishiId to string in specialPrizes
-        if "specialPrizes" in data:
-            for prize in data["specialPrizes"]:
-                if "rikishiId" in prize:
-                    prize["rikishiId"] = str(prize["rikishiId"])
 
         return Torikumi.model_validate(data)
 
@@ -508,7 +513,7 @@ class SumoClient:
         if skip:
             params["skip"] = skip
 
-        data = await self.get(f"/kimarite/{kimarite}", params=params)
+        data = await self.get("/kimarite/{kimarite}", params={"kimarite": kimarite, **params})
         return KimariteMatchesResponse(**data)
 
     async def get_measurements(

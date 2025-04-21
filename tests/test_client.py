@@ -280,7 +280,7 @@ async def test_get_rikishis_with_filters(mock_client, mock_rikishis_response):
 async def test_client_initialization():
     """Test client initialization with default values."""
     client = SumoClient()
-    assert client.base_url == "https://sumo.com/api"
+    assert client.base_url == "https://sumo-api.com/api"
     assert client.timeout is None
     assert client.retries == 3
     assert client._client is None

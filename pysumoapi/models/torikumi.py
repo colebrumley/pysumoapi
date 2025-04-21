@@ -25,18 +25,18 @@ class YushoWinner(BaseModel):
 
 
 class SpecialPrize(BaseModel):
-    """Model for a special prize winner."""
+    """Model for special prizes awarded in a basho."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    type: str = Field(..., description="Type of special prize")
+    rikishi_id: str = Field(..., alias="rikishiId", description="ID of the rikishi who won the prize")
+    shikona_en: str = Field(..., alias="shikonaEn", description="English shikona of the rikishi")
+    shikona_jp: Optional[str] = Field(None, alias="shikonaJp", description="Japanese shikona of the rikishi")
 
-    type: str = Field(..., description="Prize type")
-    rikishi_id: str = Field(..., alias="rikishiId", description="Rikishi's ID")
-    shikona_en: str = Field(
-        ..., alias="shikonaEn", description="Rikishi's English shikona"
-    )
-    shikona_jp: str = Field(
-        ..., alias="shikonaJp", description="Rikishi's Japanese shikona"
-    )
+    def __init__(self, **data):
+        # Convert rikishiId to string if it's an integer
+        if "rikishiId" in data and isinstance(data["rikishiId"], int):
+            data["rikishiId"] = str(data["rikishiId"])
+        super().__init__(**data)
 
 
 class Torikumi(BaseModel):

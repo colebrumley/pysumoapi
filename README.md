@@ -13,12 +13,19 @@ A Python client library for the [Sumo API](https://sumo-api.com), providing easy
 - Asynchronous API client using `httpx`
 - Strongly typed data models using `pydantic`
 - Comprehensive error handling
+- Automatic retries for failed requests
+- Unified match model across all endpoints
+- Automatic timezone handling
+- Input validation for all parameters
 
 ## Installation
 
 ```bash
 # Using pip
 pip install pysumoapi
+
+# Using uv (recommended)
+uv pip install pysumoapi
 ```
 
 ## Quick Start
@@ -28,19 +35,26 @@ import asyncio
 from pysumoapi.client import SumoClient
 
 async def main():
+    # Initialize with default settings (5s timeout, 3 retries)
     async with SumoClient() as client:
         # Get rikishi information
-        rikishi = await client.get_rikishi(1511)
+        rikishi = await client.get_rikishi("1511")
         print(f"Name: {rikishi.shikona_en}")
         
         # Get rikishi statistics
-        stats = await client.get_rikishi_stats(1511)
+        stats = await client.get_rikishi_stats("1511")
         print(f"Total matches: {stats.total_matches}")
         
         # Get shikona history
         shikonas = await client.get_shikonas(rikishi_id=1511, sort_order="asc")
         for shikona in shikonas:
             print(f"Basho: {shikona.basho_id}, Shikona: {shikona.shikona_en}")
+
+    # Or customize timeout and retries
+    async with SumoClient(timeout=10.0, retries=5) as client:
+        # Use the client with custom settings
+        rikishi = await client.get_rikishi("1511")
+        print(f"Name: {rikishi.shikona_en}")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -55,10 +69,24 @@ The main client class for interacting with the Sumo API.
 ```python
 from pysumoapi.client import SumoClient
 
-# Initialize with custom base URL and SSL verification
-async with SumoClient(base_url="https://sumo-api.com", verify_ssl=True) as client:
+# Initialize with default settings
+async with SumoClient() as client:
+    # Use the client here
+
+# Or customize settings
+async with SumoClient(
+    base_url="https://sumo-api.com",
+    timeout=5.0,  # Request timeout in seconds
+    retries=3,  # Maximum number of retries
+) as client:
     # Use the client here
 ```
+
+#### Constructor Parameters
+
+- `base_url: str = "https://sumo-api.com"`: The base URL for the Sumo API
+- `timeout: float | None = 5.0`: Request timeout in seconds. None for no timeout.
+- `retries: int = 3`: Maximum number of retries for failed requests
 
 #### Methods
 
@@ -75,6 +103,7 @@ async with SumoClient(base_url="https://sumo-api.com", verify_ssl=True) as clien
   - Raises `ValueError` if:
     - rikishi_id is not positive
     - basho_id is not in YYYYMM format
+  - Returns matches using the unified Match model
 
 - `get_rikishi_opponent_matches(rikishi_id: int, opponent_id: int, basho_id: Optional[str] = None) -> RikishiOpponentMatchesResponse`: Get all matches between two specific rikishi
   - Raises `ValueError` if:
@@ -152,6 +181,9 @@ async with SumoClient(base_url="https://sumo-api.com", verify_ssl=True) as clien
 - `Torikumi`: Match schedule for a specific day
 - `YushoWinner`: Information about a yusho winner
 - `Match`: Unified model for sumo matches across all endpoints
+  - Automatically handles different match formats from various endpoints
+  - Includes all possible fields with proper typing
+  - Handles timezone conversion automatically
 - `KimariteResponse`: Statistics about kimarite usage
 - `KimariteMatch`: Information about a match where a specific kimarite was used
 - `KimariteMatchesResponse`: Response containing matches with a specific kimarite
@@ -186,7 +218,7 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install development dependencies
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 ### Using Make

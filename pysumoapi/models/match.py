@@ -1,8 +1,10 @@
 """Model for sumo matches."""
 
-from typing import Literal, Optional
+from datetime import datetime
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from zoneinfo import ZoneInfo
 
 
 class Match(BaseModel):
@@ -68,14 +70,28 @@ class Match(BaseModel):
 
     # Opponent details (required for banzuke matches)
     opponent_id: Optional[int] = Field(
-        None, alias="opponentID", description="Opponent's ID"
+        None, alias="opponentId", description="Opponent's ID"
     )
-    opponent_shikona_en: Optional[str] = Field(
-        None, alias="opponentShikonaEn", description="Opponent's English shikona"
+    opponent_shikona: Optional[str] = Field(
+        None, alias="opponentShikona", description="Opponent's shikona"
     )
-    opponent_shikona_jp: Optional[str] = Field(
-        None, alias="opponentShikonaJp", description="Opponent's Japanese shikona"
+
+    # Rikishi details (required for rikishi matches)
+    rikishi_id: Optional[int] = Field(
+        None, alias="rikishiId", description="Rikishi's ID"
     )
+    rikishi_shikona: Optional[str] = Field(
+        None, alias="rikishiShikona", description="Rikishi's shikona"
+    )
+    winner: Optional[bool] = Field(
+        None, description="Whether the rikishi won the match"
+    )
+    date: Optional[datetime] = Field(None, description="Match date")
+
+    def model_post_init(self, __context: Any) -> None:
+        """Convert date string to datetime if needed."""
+        if isinstance(self.date, str):
+            self.date = datetime.fromisoformat(self.date.replace("Z", "+00:00"))
 
     @classmethod
     def from_torikumi(cls, data: dict) -> "Match":
@@ -105,8 +121,23 @@ class Match(BaseModel):
             bashoId=data.get("bashoId", ""),  # This will be set by the client
             day=1,  # Default to day 1 since banzuke records don't include day
             result=data["result"],
-            opponentID=data["opponentID"],
-            opponentShikonaEn=data["opponentShikonaEn"],
-            opponentShikonaJp=data.get("opponentShikonaJp", ""),  # This might be empty
+            opponentId=data["opponentID"],
+            opponentShikona=data["opponentShikonaEn"],
             kimarite=data["kimarite"],
+        )
+
+    @classmethod
+    def from_rikishi_match(cls, data: dict) -> "Match":
+        """Create a Match instance from rikishi match data."""
+        return cls(
+            bashoId=data["bashoId"],
+            division=data["division"],
+            day=data["day"],
+            rikishiId=data.get("rikishiId") or data.get("rikishi_id"),
+            rikishiShikona=data.get("rikishiShikona") or data.get("rikishi_shikona"),
+            opponentId=data.get("opponentId") or data.get("opponent_id"),
+            opponentShikona=data.get("opponentShikona") or data.get("opponent_shikona"),
+            kimarite=data["kimarite"],
+            winner=data.get("winner"),
+            date=data.get("date"),
         )

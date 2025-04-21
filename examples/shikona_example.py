@@ -11,7 +11,7 @@ This script shows how to:
 
 import asyncio
 import sys
-from typing import List
+from typing import List, Optional
 
 import httpx
 
@@ -21,14 +21,32 @@ from pysumoapi.models.shikonas import Shikona
 
 async def get_rikishi_shikona_history(
     client: SumoClient, rikishi_id: int
-) -> list[Shikona]:
+) -> List[Shikona]:
     """Get the shikona history for a specific rikishi."""
-    return await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
+    try:
+        response = await client.get_shikonas(rikishi_id=rikishi_id, sort_order="asc")
+        return response  # Response is already a list
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
-async def get_basho_shikonas(client: SumoClient, basho_id: str) -> list[Shikona]:
+async def get_basho_shikonas(client: SumoClient, basho_id: str) -> List[Shikona]:
     """Get all shikona changes for a specific basho."""
-    return await client.get_shikonas(basho_id=basho_id, sort_order="asc")
+    try:
+        response = await client.get_shikonas(basho_id=basho_id, sort_order="asc")
+        return response  # Response is already a list
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error occurred: {e.response.status_code}")
+        print(f"Response text: {e.response.text}")
+        raise
+    except Exception as e:
+        print(f"An error occurred: {e!s}")
+        raise
 
 
 def display_shikona_history(shikonas: List[Shikona], title: str) -> None:
@@ -55,27 +73,32 @@ def display_shikona_history(shikonas: List[Shikona], title: str) -> None:
 
 async def main():
     """Example usage of the shikona endpoint."""
-    async with SumoClient() as client:
+    # Initialize client with retry configuration and correct base URL
+    client = SumoClient(
+        base_url="https://sumo-api.com/api",
+        retries=3,
+        timeout=30.0
+    )
+    
+    async with client:
         try:
-            # Get shikona history for a specific rikishi
-            rikishi_id = 1511  # Example rikishi ID
+            # Example 1: Get shikona history for a specific rikishi
+            rikishi_id = 1511  # Terunofuji
             shikonas = await get_rikishi_shikona_history(client, rikishi_id)
-            print(f"\nShikona history for Rikishi {rikishi_id}:")
-            for shikona in shikonas:
-                print(f"Basho: {shikona.basho_id}, Shikona: {shikona.shikona_en}")
+            display_shikona_history(shikonas, f"Shikona history for Rikishi {rikishi_id}")
 
-            # Get all shikona changes for a specific basho
-            basho_id = "202305"  # Example basho ID
+            # Example 2: Get all shikona changes for a specific basho
+            basho_id = "202401"  # January 2024 basho
             shikonas = await get_basho_shikonas(client, basho_id)
-            print(f"\nShikona changes in Basho {basho_id}:")
-            for shikona in shikonas:
-                print(f"Rikishi: {shikona.rikishi_id}, Shikona: {shikona.shikona_en}")
+            display_shikona_history(shikonas, f"Shikona changes in Basho {basho_id}")
 
         except httpx.HTTPStatusError as e:
             print(f"HTTP error occurred: {e.response.status_code}")
             print(f"Response text: {e.response.text}")
+            sys.exit(1)
         except Exception as e:
             print(f"An error occurred: {e!s}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

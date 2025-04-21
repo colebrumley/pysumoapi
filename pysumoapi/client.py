@@ -1,7 +1,11 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import httpx
+import ssl
+from httpx import AsyncHTTPTransport
+from httpx_retries import RetryTransport, Retry
+from pydantic import BaseModel, Field
 
 from pysumoapi.models import (
     Banzuke,
@@ -22,82 +26,146 @@ from pysumoapi.models import (
     ShikonasResponse,
     Torikumi,
 )
+from pysumoapi.params import Pagination, SortOrder
 
 
 class SumoClient:
-    """Client for interacting with the Sumo API."""
+    """A client for interacting with the Sumo API."""
 
-    def __init__(self, base_url: str = "https://sumo-api.com", verify_ssl: bool = True):
-        """Initialize the client with the base URL."""
+    def __init__(
+        self,
+        base_url: str = "https://sumo-api.com/api",
+        timeout: Optional[float] = None,
+        retries: int = 3,
+    ) -> None:
+        """Initialize the Sumo API client.
+
+        Args:
+            base_url: The base URL for the Sumo API
+            timeout: The timeout for API requests in seconds, None for no timeout
+            retries: The number of retries for failed requests
+        """
         self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.retries = retries
         self._client: Optional[httpx.AsyncClient] = None
-        self.verify_ssl = verify_ssl
 
     async def __aenter__(self) -> "SumoClient":
-        """Create an async context manager."""
-        import ssl
-
-        try:
-            import certifi
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except (ImportError, FileNotFoundError):
-            # If certifi is not available or certificates are not found,
-            # create a default context without certificate verification
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-
+        """Enter the async context manager."""
+        retry = Retry(total=self.retries, backoff_factor=0.5)
+        transport = RetryTransport(retry=retry)
         self._client = httpx.AsyncClient(
-            verify=ssl_context if self.verify_ssl else False
+            base_url=self.base_url,
+            timeout=self.timeout,
+            transport=transport,
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up the async client."""
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exit the async context manager."""
         if self._client:
             await self._client.aclose()
+            self._client = None
 
     async def _make_request(
-        self, method: str, path: str, params: Optional[Dict[str, Any]] = None
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        json: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Make a request to the Sumo API.
+        """Make an HTTP request to the Sumo API with retries.
 
         Args:
-            method: HTTP method to use
-            path: API endpoint path
-            params: Optional query parameters
+            method: The HTTP method to use
+            path: The API path to request, with path parameters in {param_name} format
+            params: Query parameters to include in the request, including path parameters
+            json: JSON data to include in the request body
 
         Returns:
-            JSON response data
+            The JSON response from the API
 
         Raises:
-            httpx.HTTPStatusError: If the API returns an error status code
-            ValueError: If the API returns a 404 with a specific error message
+            httpx.HTTPError: If the request fails after all retries
         """
         if not self._client:
-            raise RuntimeError("Client must be used as an async context manager")
+            raise RuntimeError("Client not initialized. Use 'async with' context manager.")
 
-        url = f"{self.base_url}/api{path}"
-        response = await self._client.request(method, url, params=params)
-        
-        # Handle 404 errors with specific error messages
-        if response.status_code == 404:
-            data = response.json()
-            if "error" in data:
-                raise ValueError(f"API Error: {data['error']}")
-            
+        # Extract path parameters from params and format the path
+        path_params = {}
+        if params:
+            path_params = {k: v for k, v in params.items() if f"{{{k}}}" in path}
+            query_params = {k: v for k, v in params.items() if f"{{{k}}}" not in path}
+        else:
+            query_params = {}
+
+        # Format the path with path parameters
+        formatted_path = path.format(**path_params)
+
+        response = await self._client.request(
+            method=method,
+            url=formatted_path,
+            params=query_params,
+            json=json,
+        )
         response.raise_for_status()
         return response.json()
 
+    async def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Make a GET request to the Sumo API.
+
+        Args:
+            path: The API path to request
+            params: Query parameters to include in the request
+
+        Returns:
+            The JSON response from the API
+        """
+        return await self._make_request("GET", path, params=params)
+
+    async def post(self, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
+        """Make a POST request to the Sumo API.
+
+        Args:
+            path: The API path to request
+            json: JSON data to include in the request body
+
+        Returns:
+            The JSON response from the API
+        """
+        return await self._make_request("POST", path, json=json)
+
+    async def put(self, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
+        """Make a PUT request to the Sumo API.
+
+        Args:
+            path: The API path to request
+            json: JSON data to include in the request body
+
+        Returns:
+            The JSON response from the API
+        """
+        return await self._make_request("PUT", path, json=json)
+
+    async def delete(self, path: str) -> Dict[str, Any]:
+        """Make a DELETE request to the Sumo API.
+
+        Args:
+            path: The API path to request
+
+        Returns:
+            The JSON response from the API
+        """
+        return await self._make_request("DELETE", path)
+
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""
-        data = await self._make_request("GET", f"/rikishi/{rikishi_id}")
+        data = await self.get("/rikishi/{rikishi_id}", params={"rikishi_id": rikishi_id})
         return Rikishi.model_validate(data)
 
     async def get_rikishi_stats(self, rikishi_id: str) -> RikishiStats:
         """Get statistics for a rikishi."""
-        data = await self._make_request("GET", f"/rikishi/{rikishi_id}/stats")
+        data = await self.get("/rikishi/{rikishi_id}/stats", params={"rikishi_id": rikishi_id})
         return RikishiStats.model_validate(data)
 
     async def get_rikishis(
@@ -133,7 +201,7 @@ class SumoClient:
         if intai is not None:
             params["intai"] = str(intai).lower()
 
-        data = await self._make_request("GET", "/rikishis", params=params)
+        data = await self.get("/rikishis", params=params)
         return RikishiList.model_validate(data)
 
     async def get_rikishi_matches(
@@ -162,9 +230,14 @@ class SumoClient:
         if basho_id:
             params["bashoId"] = basho_id
 
-        data = await self._make_request(
-            "GET", f"/rikishi/{rikishi_id}/matches", params=params
-        )
+        data = await self.get("/rikishi/{rikishi_id}/matches", params={"rikishi_id": rikishi_id, **params})
+        
+        # Convert matches to use the unified Match model
+        if "records" in data:
+            data["records"] = [
+                Match.from_rikishi_match(match) for match in data["records"]
+            ]
+            
         return RikishiMatchesResponse.model_validate(data)
 
     async def get_rikishi_opponent_matches(
@@ -197,9 +270,7 @@ class SumoClient:
         if basho_id:
             params["bashoId"] = basho_id
 
-        data = await self._make_request(
-            "GET", f"/rikishi/{rikishi_id}/matches/{opponent_id}", params=params
-        )
+        data = await self.get("/rikishi/{rikishi_id}/matches/{opponent_id}", params={"rikishi_id": rikishi_id, "opponent_id": opponent_id, **params})
         return RikishiOpponentMatchesResponse.model_validate(data)
 
     async def get_basho(self, basho_id: str) -> Basho:
@@ -225,7 +296,7 @@ class SumoClient:
         if basho_date > datetime.now():
             raise ValueError("Cannot get details for future basho")
 
-        data = await self._make_request("GET", f"/basho/{basho_id}")
+        data = await self.get(f"/basho/{basho_id}")
         return Basho.model_validate(data)
 
     async def get_banzuke(self, basho_id: str, division: str) -> Banzuke:
@@ -265,7 +336,7 @@ class SumoClient:
         if division not in valid_divisions:
             raise ValueError("Invalid division")
 
-        data = await self._make_request("GET", f"/basho/{basho_id}/banzuke/{division}")
+        data = await self.get("/basho/{basho_id}/banzuke/{division}", params={"basho_id": basho_id, "division": division})
 
         # Process east and west sides
         for side in ["east", "west"]:
@@ -329,9 +400,7 @@ class SumoClient:
         if not 1 <= day <= 15:
             raise ValueError("Day must be between 1 and 15")
 
-        data = await self._make_request(
-            "GET", f"/basho/{basho_id}/torikumi/{division}/{day}"
-        )
+        data = await self.get("/basho/{basho_id}/torikumi/{division}/{day}", params={"basho_id": basho_id, "division": division, "day": day})
 
         # Convert matches to use the unified Match model
         if "torikumi" in data:
@@ -347,28 +416,20 @@ class SumoClient:
         data["division"] = division
         data["day"] = day
 
-        # Convert rikishiId to string in specialPrizes
-        if "specialPrizes" in data:
-            for prize in data["specialPrizes"]:
-                if "rikishiId" in prize:
-                    prize["rikishiId"] = str(prize["rikishiId"])
-
         return Torikumi.model_validate(data)
 
     async def get_kimarite(
         self,
         sort_field: Optional[str] = None,
-        sort_order: Optional[str] = "asc",
-        limit: Optional[int] = None,
-        skip: Optional[int] = 0,
+        sort_order: SortOrder = SortOrder.desc,
+        pagination: Pagination | None = None,
     ) -> KimariteResponse:
         """Get statistics on kimarite usage.
 
         Args:
             sort_field: Field to sort by (count, kimarite, lastUsage)
             sort_order: Sort order (asc or desc)
-            limit: Number of records to return
-            skip: Number of records to skip
+            pagination: Optional pagination parameters
 
         Returns:
             KimariteResponse object containing kimarite statistics
@@ -382,43 +443,30 @@ class SumoClient:
                 "Invalid sort field. Must be one of: count, kimarite, lastUsage"
             )
 
-        if sort_order and sort_order not in ["asc", "desc"]:
-            raise ValueError("Sort order must be either 'asc' or 'desc'")
-
-        if limit is not None and limit <= 0:
-            raise ValueError("Limit must be a positive integer")
-
-        if skip < 0:
-            raise ValueError("Skip must be a non-negative integer")
-
         # Build query parameters
         params: Dict[str, Any] = {}
         if sort_field:
             params["sortField"] = sort_field
         if sort_order:
             params["sortOrder"] = sort_order
-        if limit is not None:
-            params["limit"] = limit
-        if skip:
-            params["skip"] = skip
+        if pagination:
+            params.update(pagination.model_dump(exclude_none=True))
 
-        data = await self._make_request("GET", "/kimarite", params=params)
+        data = await self.get("/kimarite", params=params)
         return KimariteResponse(**data)
 
     async def get_kimarite_matches(
         self,
         kimarite: str,
-        sort_order: Optional[str] = "asc",
-        limit: Optional[int] = None,
-        skip: Optional[int] = 0,
+        sort_order: SortOrder = SortOrder.desc,
+        pagination: Pagination | None = None,
     ) -> KimariteMatchesResponse:
         """Get matches where a specific kimarite was used.
 
         Args:
             kimarite: Name of the kimarite to search for
             sort_order: Sort order (asc or desc)
-            limit: Number of records to return (max 1000)
-            skip: Number of records to skip
+            pagination: Optional pagination parameters
 
         Returns:
             KimariteMatchesResponse object containing matches
@@ -430,35 +478,21 @@ class SumoClient:
         if not kimarite:
             raise ValueError("Kimarite cannot be empty")
 
-        if sort_order and sort_order not in ["asc", "desc"]:
-            raise ValueError("Sort order must be either 'asc' or 'desc'")
-
-        if limit is not None:
-            if limit <= 0:
-                raise ValueError("Limit must be a positive integer")
-            if limit > 1000:
-                raise ValueError("Limit cannot exceed 1000")
-
-        if skip < 0:
-            raise ValueError("Skip must be a non-negative integer")
-
         # Build query parameters
-        params: Dict[str, Any] = {}
+        params: Dict[str, Any] = {"kimarite": kimarite}
         if sort_order:
             params["sortOrder"] = sort_order
-        if limit is not None:
-            params["limit"] = limit
-        if skip:
-            params["skip"] = skip
+        if pagination:
+            params.update(pagination.model_dump(exclude_none=True))
 
-        data = await self._make_request("GET", f"/kimarite/{kimarite}", params=params)
+        data = await self.get("/kimarite/{kimarite}", params=params)
         return KimariteMatchesResponse(**data)
 
     async def get_measurements(
         self,
         basho_id: Optional[str] = None,
         rikishi_id: Optional[int] = None,
-        sort_order: Optional[str] = "desc",
+        sort_order: SortOrder = SortOrder.desc,
     ) -> MeasurementsResponse:
         """Get measurement changes by rikishi or basho.
 
@@ -483,7 +517,7 @@ class SumoClient:
         if rikishi_id is not None and rikishi_id <= 0:
             raise ValueError("Rikishi ID must be positive")
 
-        if sort_order and sort_order not in ["asc", "desc"]:
+        if not isinstance(sort_order, SortOrder):
             raise ValueError("Sort order must be either 'asc' or 'desc'")
 
         # Build query parameters
@@ -493,13 +527,13 @@ class SumoClient:
         if rikishi_id:
             params["rikishiId"] = rikishi_id
 
-        data = await self._make_request("GET", "/measurements", params=params)
+        data = await self.get("/measurements", params=params)
         # Convert each item in the list to a Measurement model
         measurements = [Measurement.model_validate(item) for item in data]
 
         # Sort by basho_id if requested
         if sort_order:
-            measurements.sort(key=lambda m: m.basho_id, reverse=(sort_order == "desc"))
+            measurements.sort(key=lambda m: m.basho_id, reverse=(sort_order == SortOrder.desc))
 
         return measurements
 
@@ -542,7 +576,7 @@ class SumoClient:
         if rikishi_id:
             params["rikishiId"] = rikishi_id
 
-        data = await self._make_request("GET", "/ranks", params=params)
+        data = await self.get("/ranks", params=params)
         # Convert each item in the list to a Rank model
         ranks = [Rank.model_validate(item) for item in data]
 
@@ -591,7 +625,7 @@ class SumoClient:
         if rikishi_id:
             params["rikishiId"] = rikishi_id
 
-        data = await self._make_request("GET", "/shikonas", params=params)
+        data = await self.get("/shikonas", params=params)
         # Convert each item in the list to a Shikona model
         shikonas = [Shikona.model_validate(item) for item in data]
 

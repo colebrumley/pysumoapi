@@ -1,6 +1,8 @@
 """Tests for the kimarite matches endpoint."""
 
 from unittest.mock import AsyncMock, patch
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -115,3 +117,65 @@ async def test_get_kimarite_matches_invalid_skip():
     async with SumoClient() as client:
         with pytest.raises(ValueError, match="Skip must be a non-negative integer"):
             await client.get_kimarite_matches("yorikiri", skip=-1)
+
+
+@pytest.mark.asyncio
+async def test_get_kimarite_matches_skip_zero():
+    """Test that skip=0 is properly handled."""
+    mock_response = {
+        "limit": TEST_LIMIT,
+        "skip": 0,
+        "total": 1,
+        "records": [
+            {
+                "id": "202401-1-1",
+                "bashoId": "202401",
+                "division": "Makuuchi",
+                "day": 1,
+                "matchNo": 1,
+                "eastId": 1,
+                "eastShikona": "Test East",
+                "eastRank": "M1",
+                "westId": 2,
+                "westShikona": "Test West",
+                "westRank": "M2",
+                "winnerId": 1,
+                "winnerEn": "Test East",
+                "winnerJp": "テスト東",
+                "kimarite": "yorikiri",
+            }
+        ],
+    }
+
+    async with SumoClient() as client:
+        with patch.object(client, "_make_request", return_value=mock_response):
+            response = await client.get_kimarite_matches(
+                "yorikiri", sort_order="desc", limit=TEST_LIMIT, skip=0
+            )
+
+        # Verify response type
+        assert isinstance(response, KimariteMatchesResponse)
+
+        # Verify query parameters are reflected
+        assert response.limit == TEST_LIMIT
+        assert response.skip == 0
+        assert response.total == 1
+
+        # Verify records
+        assert len(response.records) == 1
+        match = response.records[0]
+        assert match.id == "202401-1-1"
+        assert match.basho_id == "202401"
+        assert match.division == "Makuuchi"
+        assert match.day == 1
+        assert match.match_no == 1
+        assert match.east_id == 1
+        assert match.east_shikona == "Test East"
+        assert match.east_rank == "M1"
+        assert match.west_id == 2
+        assert match.west_shikona == "Test West"
+        assert match.west_rank == "M2"
+        assert match.winner_id == 1
+        assert match.winner_en == "Test East"
+        assert match.winner_jp == "テスト東"
+        assert match.kimarite == "yorikiri"

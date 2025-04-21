@@ -461,7 +461,7 @@ class SumoClient:
             params["sortOrder"] = sort_order
         if limit is not None:
             params["limit"] = limit
-        if skip:
+        if skip is not None:
             params["skip"] = skip
 
         data = await self.get("/kimarite", params=params)
@@ -510,7 +510,7 @@ class SumoClient:
             params["sortOrder"] = sort_order
         if limit is not None:
             params["limit"] = limit
-        if skip:
+        if skip is not None:
             params["skip"] = skip
 
         data = await self.get("/kimarite/{kimarite}", params={"kimarite": kimarite, **params})

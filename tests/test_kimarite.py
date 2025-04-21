@@ -115,3 +115,43 @@ async def test_get_kimarite_invalid_skip():
     async with SumoClient() as client:
         with pytest.raises(ValueError, match="Skip must be a non-negative integer"):
             await client.get_kimarite(skip=-1)
+
+
+@pytest.mark.asyncio
+async def test_get_kimarite_skip_zero():
+    """Test that skip=0 is properly handled."""
+    mock_response = {
+        "limit": TEST_LIMIT,
+        "skip": 0,
+        "sortField": "count",
+        "sortOrder": "desc",
+        "records": [
+            {
+                "kimarite": "yorikiri",
+                "count": 100,
+                "lastUsage": "202401-1",
+            }
+        ],
+    }
+
+    async with SumoClient() as client:
+        with patch.object(client, "_make_request", return_value=mock_response):
+            response = await client.get_kimarite(
+                sort_field="count", sort_order="desc", limit=TEST_LIMIT, skip=0
+            )
+
+        # Verify response type
+        assert isinstance(response, KimariteResponse)
+
+        # Verify query parameters are reflected
+        assert response.sort_field == "count"
+        assert response.sort_order == "desc"
+        assert response.limit == TEST_LIMIT
+        assert response.skip == 0
+
+        # Verify records
+        assert len(response.records) == 1
+        record = response.records[0]
+        assert record.count == 100
+        assert record.kimarite == "yorikiri"
+        assert record.last_usage == "202401-1"

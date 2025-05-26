@@ -172,6 +172,42 @@ def mock_rikishis_response():
 
 
 @pytest.mark.asyncio
+async def test_sumo_client_initialization():
+    """Test that SumoClient initializes with custom HTTP configuration."""
+    client = SumoClient(
+        base_url="https://test-api.com",
+        verify_ssl=False,
+        connect_timeout=10.0,
+        read_timeout=15.0,
+        enable_http2=False,
+        max_retries=3,
+        retry_backoff_factor=2.0,
+    )
+    
+    assert client.base_url == "https://test-api.com"
+    assert client.verify_ssl is False
+    assert client.connect_timeout == 10.0
+    assert client.read_timeout == 15.0
+    assert client.enable_http2 is False
+    assert client.max_retries == 3
+    assert client.retry_backoff_factor == 2.0
+
+
+@pytest.mark.asyncio
+async def test_sumo_client_default_initialization():
+    """Test that SumoClient initializes with default values."""
+    client = SumoClient()
+    
+    assert client.base_url == "https://sumo-api.com"
+    assert client.verify_ssl is True
+    assert client.connect_timeout == 5.0
+    assert client.read_timeout == 5.0
+    assert client.enable_http2 is True
+    assert client.max_retries == 2
+    assert client.retry_backoff_factor == 1.0
+
+
+@pytest.mark.asyncio
 async def test_get_rikishi():
     """Test getting a single rikishi."""
     mock_response = {

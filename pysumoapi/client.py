@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -27,11 +28,35 @@ from pysumoapi.models import (
 class SumoClient:
     """Client for interacting with the Sumo API."""
 
-    def __init__(self, base_url: str = "https://sumo-api.com", verify_ssl: bool = True):
-        """Initialize the client with the base URL."""
+    def __init__(
+        self,
+        base_url: str = "https://sumo-api.com",
+        verify_ssl: bool = True,
+        connect_timeout: float = 5.0,
+        read_timeout: float = 5.0,
+        enable_http2: bool = True,
+        max_retries: int = 2,
+        retry_backoff_factor: float = 1.0,
+    ):
+        """Initialize the client with the base URL and HTTP configuration.
+        
+        Args:
+            base_url: Base URL for the Sumo API
+            verify_ssl: Whether to verify SSL certificates
+            connect_timeout: Connection timeout in seconds
+            read_timeout: Read timeout in seconds
+            enable_http2: Whether to enable HTTP/2 support
+            max_retries: Maximum number of retry attempts
+            retry_backoff_factor: Factor for exponential backoff (delay = factor * (2 ** attempt))
+        """
         self.base_url = base_url.rstrip("/")
         self._client: Optional[httpx.AsyncClient] = None
         self.verify_ssl = verify_ssl
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+        self.enable_http2 = enable_http2
+        self.max_retries = max_retries
+        self.retry_backoff_factor = retry_backoff_factor
 
     async def __aenter__(self) -> "SumoClient":
         """Create an async context manager."""
@@ -47,8 +72,18 @@ class SumoClient:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
+        # Configure timeout
+        timeout = httpx.Timeout(
+            connect=self.connect_timeout,
+            read=self.read_timeout,
+            write=self.read_timeout,  # Use read timeout for writes as well
+            pool=self.connect_timeout  # Use connect timeout for pool
+        )
+
         self._client = httpx.AsyncClient(
-            verify=ssl_context if self.verify_ssl else False
+            verify=ssl_context if self.verify_ssl else False,
+            timeout=timeout,
+            http2=self.enable_http2,
         )
         return self
 
@@ -61,7 +96,7 @@ class SumoClient:
         self, method: str, path: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Make a request to the Sumo API.
+        Make a request to the Sumo API with automatic retries.
 
         Args:
             method: HTTP method to use
@@ -72,23 +107,50 @@ class SumoClient:
             JSON response data
 
         Raises:
-            httpx.HTTPStatusError: If the API returns an error status code
+            httpx.HTTPStatusError: If the API returns an error status code after all retries
             ValueError: If the API returns a 404 with a specific error message
         """
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
         url = f"{self.base_url}/api{path}"
-        response = await self._client.request(method, url, params=params)
+        last_exception = None
         
-        # Handle 404 errors with specific error messages
-        if response.status_code == 404:
-            data = response.json()
-            if "error" in data:
-                raise ValueError(f"API Error: {data['error']}")
-            
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = await self._client.request(method, url, params=params)
+                
+                # Handle 404 errors with specific error messages
+                if response.status_code == 404:
+                    data = response.json()
+                    if "error" in data:
+                        raise ValueError(f"API Error: {data['error']}")
+                    
+                response.raise_for_status()
+                return response.json()
+                
+            except (httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as e:
+                last_exception = e
+                
+                # Don't retry on client errors (4xx) except for timeouts and connection issues
+                if isinstance(e, httpx.HTTPStatusError) and 400 <= e.response.status_code < 500:
+                    # Only retry on 408 (Request Timeout), 429 (Too Many Requests)
+                    if e.response.status_code not in (408, 429):
+                        raise e
+                
+                # If this is the last attempt, raise the exception
+                if attempt == self.max_retries:
+                    break
+                
+                # Calculate exponential backoff delay
+                delay = self.retry_backoff_factor * (2 ** attempt)
+                await asyncio.sleep(delay)
+        
+        # If we get here, all retries failed
+        if last_exception:
+            raise last_exception
+        else:
+            raise RuntimeError("All retries failed without capturing an exception")
 
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""

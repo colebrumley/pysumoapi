@@ -2,9 +2,11 @@
 Tests for the Sumo API client.
 """
 
+import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
+import httpx
 import pytest
 from zoneinfo import ZoneInfo
 
@@ -471,3 +473,281 @@ async def test_get_rikishis_with_filters():
     assert result.skip == TEST_SKIP
     assert result.total == 1
     assert len(result.records) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_logic_with_timeout_exception():
+    """Test that timeout exceptions trigger retries."""
+    mock_response = {"id": 1, "shikonaEn": "Test"}
+    
+    async with SumoClient(max_retries=2, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            # First two calls raise timeout, third succeeds
+            mock_request.side_effect = [
+                httpx.TimeoutException("Connection timed out"),
+                httpx.TimeoutException("Connection timed out"),
+                AsyncMock(
+                    json=lambda: mock_response,
+                    raise_for_status=lambda: None,
+                    status_code=200
+                )
+            ]
+            
+            result = await client._make_request("GET", "/test")
+            
+            # Should have made 3 calls (2 retries + 1 success)
+            assert mock_request.call_count == 3
+            assert result == mock_response
+
+
+@pytest.mark.asyncio 
+async def test_retry_logic_with_connection_error():
+    """Test that connection errors trigger retries."""
+    mock_response = {"id": 1, "shikonaEn": "Test"}
+    
+    async with SumoClient(max_retries=1, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            # First call raises connection error, second succeeds
+            mock_request.side_effect = [
+                httpx.ConnectError("Connection failed"),
+                AsyncMock(
+                    json=lambda: mock_response,
+                    raise_for_status=lambda: None,
+                    status_code=200
+                )
+            ]
+            
+            result = await client._make_request("GET", "/test")
+            
+            assert mock_request.call_count == 2
+            assert result == mock_response
+
+
+@pytest.mark.asyncio
+async def test_retry_logic_with_429_status():
+    """Test that 429 (Too Many Requests) status triggers retries."""
+    mock_response = {"id": 1, "shikonaEn": "Test"}
+    
+    async with SumoClient(max_retries=1, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            # Create a mock 429 response
+            mock_429_response = MagicMock()
+            mock_429_response.status_code = 429
+            
+            mock_request.side_effect = [
+                httpx.HTTPStatusError(
+                    "Too Many Requests", 
+                    request=MagicMock(), 
+                    response=mock_429_response
+                ),
+                AsyncMock(
+                    json=lambda: mock_response,
+                    raise_for_status=lambda: None,
+                    status_code=200
+                )
+            ]
+            
+            result = await client._make_request("GET", "/test")
+            
+            assert mock_request.call_count == 2
+            assert result == mock_response
+
+
+@pytest.mark.asyncio
+async def test_retry_logic_with_408_status():
+    """Test that 408 (Request Timeout) status triggers retries."""
+    mock_response = {"id": 1, "shikonaEn": "Test"}
+    
+    async with SumoClient(max_retries=1, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            # Create a mock 408 response
+            mock_408_response = MagicMock()
+            mock_408_response.status_code = 408
+            
+            mock_request.side_effect = [
+                httpx.HTTPStatusError(
+                    "Request Timeout", 
+                    request=MagicMock(), 
+                    response=mock_408_response
+                ),
+                AsyncMock(
+                    json=lambda: mock_response,
+                    raise_for_status=lambda: None,
+                    status_code=200
+                )
+            ]
+            
+            result = await client._make_request("GET", "/test")
+            
+            assert mock_request.call_count == 2
+            assert result == mock_response
+
+
+@pytest.mark.asyncio
+async def test_no_retry_on_4xx_errors():
+    """Test that 4xx errors (except 408, 429) don't trigger retries."""
+    async with SumoClient(max_retries=2) as client:
+        with patch.object(client._client, "request") as mock_request:
+            # Create a mock 400 response
+            mock_400_response = MagicMock()
+            mock_400_response.status_code = 400
+            
+            mock_request.side_effect = httpx.HTTPStatusError(
+                "Bad Request", 
+                request=MagicMock(), 
+                response=mock_400_response
+            )
+            
+            with pytest.raises(httpx.HTTPStatusError):
+                await client._make_request("GET", "/test")
+            
+            # Should only make 1 call, no retries
+            assert mock_request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_exponential_backoff_timing():
+    """Test that exponential backoff works correctly."""
+    async with SumoClient(max_retries=2, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            with patch("asyncio.sleep") as mock_sleep:
+                mock_request.side_effect = [
+                    httpx.TimeoutException("Timeout"),
+                    httpx.TimeoutException("Timeout"),
+                    httpx.TimeoutException("Timeout")  # All calls fail
+                ]
+                
+                with pytest.raises(httpx.TimeoutException):
+                    await client._make_request("GET", "/test")
+                
+                # Should have called sleep twice (after 1st and 2nd failures)
+                assert mock_sleep.call_count == 2
+                
+                # Check exponential backoff: 0.1 * (2^0) = 0.1, 0.1 * (2^1) = 0.2
+                mock_sleep.assert_any_call(0.1)
+                mock_sleep.assert_any_call(0.2)
+
+
+@pytest.mark.asyncio
+async def test_max_retries_exhausted():
+    """Test behavior when all retries are exhausted."""
+    async with SumoClient(max_retries=1, retry_backoff_factor=0.1) as client:
+        with patch.object(client._client, "request") as mock_request:
+            mock_request.side_effect = httpx.TimeoutException("Always timeout")
+            
+            with pytest.raises(httpx.TimeoutException):
+                await client._make_request("GET", "/test")
+            
+            # Should make 2 calls (1 initial + 1 retry)
+            assert mock_request.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_no_retries_when_max_retries_zero():
+    """Test that no retries happen when max_retries is 0."""
+    async with SumoClient(max_retries=0) as client:
+        with patch.object(client._client, "request") as mock_request:
+            mock_request.side_effect = httpx.TimeoutException("Timeout")
+            
+            with pytest.raises(httpx.TimeoutException):
+                await client._make_request("GET", "/test")
+            
+            # Should only make 1 call
+            assert mock_request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_404_error_handling():
+    """Test proper handling of 404 errors with error messages."""
+    async with SumoClient() as client:
+        with patch.object(client._client, "request") as mock_request:
+            mock_404_response = MagicMock()
+            mock_404_response.status_code = 404
+            mock_404_response.json.return_value = {"error": "Rikishi not found"}
+            
+            mock_request.return_value = mock_404_response
+            
+            with pytest.raises(ValueError, match="API Error: Rikishi not found"):
+                await client._make_request("GET", "/test")
+
+
+@pytest.mark.asyncio
+async def test_timeout_configuration():
+    """Test that timeout configuration is properly applied."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value = mock_client
+        mock_client.__aenter__.return_value = mock_client
+        
+        client = SumoClient(
+            connect_timeout=10.0,
+            read_timeout=15.0,
+            enable_http2=False,
+        )
+        
+        async with client:
+            pass
+        
+        # Verify AsyncClient was called with correct timeout configuration
+        mock_client_class.assert_called_once()
+        call_kwargs = mock_client_class.call_args[1]
+        
+        assert call_kwargs["http2"] is False
+        
+        timeout = call_kwargs["timeout"]
+        assert timeout.connect == 10.0
+        assert timeout.read == 15.0
+        assert timeout.write == 15.0  # Should use read timeout
+        assert timeout.pool == 10.0   # Should use connect timeout
+
+
+@pytest.mark.asyncio
+async def test_ssl_context_with_certifi():
+    """Test SSL context creation when certifi is available."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("ssl.create_default_context") as mock_ssl_context:
+            with patch("certifi.where", return_value="/path/to/certs"):
+                mock_client = AsyncMock()
+                mock_client_class.return_value = mock_client
+                mock_client.__aenter__.return_value = mock_client
+                
+                client = SumoClient(verify_ssl=True)
+                
+                async with client:
+                    pass
+                
+                # Should have created SSL context with certifi
+                mock_ssl_context.assert_called_once_with(cafile="/path/to/certs")
+
+
+@pytest.mark.asyncio
+async def test_ssl_context_without_certifi():
+    """Test SSL context creation when certifi is not available."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("ssl.create_default_context") as mock_ssl_context:
+            with patch("certifi.where", side_effect=ImportError("No certifi")):
+                mock_context = MagicMock()
+                mock_ssl_context.return_value = mock_context
+                
+                mock_client = AsyncMock()
+                mock_client_class.return_value = mock_client
+                mock_client.__aenter__.return_value = mock_client
+                
+                client = SumoClient(verify_ssl=True)
+                
+                async with client:
+                    pass
+                
+                # Should have created default SSL context and disabled verification
+                mock_ssl_context.assert_called_once_with()
+                assert mock_context.check_hostname is False
+                assert mock_context.verify_mode == 0  # ssl.CERT_NONE
+
+
+@pytest.mark.asyncio
+async def test_runtime_error_without_context_manager():
+    """Test that using client methods without context manager raises RuntimeError."""
+    client = SumoClient()
+    
+    with pytest.raises(RuntimeError, match="Client must be used as an async context manager"):
+        await client._make_request("GET", "/test")

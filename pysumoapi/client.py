@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -62,15 +61,15 @@ class SumoClient:
         """Create an async context manager."""
         import ssl
 
-        try:
-            import certifi
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except (ImportError, FileNotFoundError):
-            # If certifi is not available or certificates are not found,
-            # create a default context without certificate verification
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
+        # Configure SSL verification
+        if self.verify_ssl:
+            try:
+                import certifi
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+            except (ImportError, FileNotFoundError):
+                raise RuntimeError("certifi not available; set verify_ssl=False to proceed")
+        else:
+            ssl_context = False
 
         # Configure timeout
         timeout = httpx.Timeout(
@@ -80,10 +79,18 @@ class SumoClient:
             pool=self.connect_timeout  # Use connect timeout for pool
         )
 
+        # Configure retry transport
+        from httpx import AsyncHTTPTransport
+        transport = AsyncHTTPTransport(
+            retries=self.max_retries,
+        )
+
         self._client = httpx.AsyncClient(
-            verify=ssl_context if self.verify_ssl else False,
+            base_url=f"{self.base_url}/api",
+            verify=ssl_context,
             timeout=timeout,
             http2=self.enable_http2,
+            transport=transport,
         )
         return self
 
@@ -96,7 +103,7 @@ class SumoClient:
         self, method: str, path: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Make a request to the Sumo API with automatic retries.
+        Make a request to the Sumo API.
 
         Args:
             method: HTTP method to use
@@ -107,50 +114,31 @@ class SumoClient:
             JSON response data
 
         Raises:
-            httpx.HTTPStatusError: If the API returns an error status code after all retries
+            httpx.HTTPStatusError: If the API returns an error status code
             ValueError: If the API returns a 404 with a specific error message
+            RuntimeError: If the response contains invalid JSON
         """
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
-        url = f"{self.base_url}/api{path}"
-        last_exception = None
+        response = await self._client.request(method, path, params=params)
         
-        for attempt in range(self.max_retries + 1):
+        # Handle 404 errors with specific error messages
+        if response.status_code == 404:
             try:
-                response = await self._client.request(method, url, params=params)
-                
-                # Handle 404 errors with specific error messages
-                if response.status_code == 404:
-                    data = response.json()
-                    if "error" in data:
-                        raise ValueError(f"API Error: {data['error']}")
-                    
-                response.raise_for_status()
-                return response.json()
-                
-            except (httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as e:
-                last_exception = e
-                
-                # Don't retry on client errors (4xx) except for timeouts and connection issues
-                if isinstance(e, httpx.HTTPStatusError) and 400 <= e.response.status_code < 500:
-                    # Only retry on 408 (Request Timeout), 429 (Too Many Requests)
-                    if e.response.status_code not in (408, 429):
-                        raise e
-                
-                # If this is the last attempt, raise the exception
-                if attempt == self.max_retries:
-                    break
-                
-                # Calculate exponential backoff delay
-                delay = self.retry_backoff_factor * (2 ** attempt)
-                await asyncio.sleep(delay)
+                data = response.json()
+                if "error" in data:
+                    raise ValueError(f"API Error: {data['error']}")
+            except (KeyError, TypeError):
+                # If JSON decode fails or doesn't have error key, fall through to raise_for_status
+                pass
+            
+        response.raise_for_status()
         
-        # If we get here, all retries failed
-        if last_exception:
-            raise last_exception
-        else:
-            raise RuntimeError("All retries failed without capturing an exception")
+        try:
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(f"Invalid JSON from API: {e}") from e
 
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""

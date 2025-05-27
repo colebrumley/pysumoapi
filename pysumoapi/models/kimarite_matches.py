@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
-from zoneinfo import ZoneInfo
 
 
 class KimariteMatch(BaseModel):
@@ -18,7 +18,7 @@ class KimariteMatch(BaseModel):
     id: str = Field(..., description="Unique identifier for the match")
     basho_id: str = Field(..., alias="bashoId", description="The ID of the basho")
     division: str = Field(..., description="The division of the match")
-    day: int = Field(..., description="The day of the basho", ge=1, le=15)
+    day: int = Field(..., description="The day of the basho", ge=1)
     match_no: int = Field(..., alias="matchNo", description="The match number", gt=0)
     east_id: int = Field(..., alias="eastId", description="The ID of the east rikishi")
     east_shikona: str = Field(

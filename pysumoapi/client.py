@@ -38,7 +38,7 @@ class SumoClient:
         retry_backoff_factor: float = 1.0,
     ):
         """Initialize the client with the base URL and HTTP configuration.
-        
+
         Args:
             base_url: Base URL for the Sumo API
             verify_ssl: Whether to verify SSL certificates
@@ -65,9 +65,12 @@ class SumoClient:
         if self.verify_ssl:
             try:
                 import certifi
+
                 ssl_context = ssl.create_default_context(cafile=certifi.where())
             except (ImportError, FileNotFoundError):
-                raise RuntimeError("certifi not available; set verify_ssl=False to proceed")
+                raise RuntimeError(
+                    "certifi not available; set verify_ssl=False to proceed"
+                )
         else:
             ssl_context = False
 
@@ -76,11 +79,12 @@ class SumoClient:
             connect=self.connect_timeout,
             read=self.read_timeout,
             write=self.read_timeout,  # Use read timeout for writes as well
-            pool=self.connect_timeout  # Use connect timeout for pool
+            pool=self.connect_timeout,  # Use connect timeout for pool
         )
 
         # Configure retry transport
         from httpx import AsyncHTTPTransport
+
         transport = AsyncHTTPTransport(
             retries=self.max_retries,
         )
@@ -122,7 +126,7 @@ class SumoClient:
             raise RuntimeError("Client must be used as an async context manager")
 
         response = await self._client.request(method, path, params=params)
-        
+
         # Handle 404 errors with specific error messages
         if response.status_code == 404:
             try:
@@ -132,9 +136,9 @@ class SumoClient:
             except (KeyError, TypeError):
                 # If JSON decode fails or doesn't have error key, fall through to raise_for_status
                 pass
-            
+
         response.raise_for_status()
-        
+
         try:
             return response.json()
         except Exception as e:
@@ -376,8 +380,8 @@ class SumoClient:
             raise ValueError("Invalid division")
 
         # Validate day
-        if not 1 <= day <= 15:
-            raise ValueError("Day must be between 1 and 15")
+        if not 1 <= day <= 20:
+            raise ValueError("Day must be between 1 and 20")
 
         data = await self._make_request(
             "GET", f"/basho/{basho_id}/torikumi/{division}/{day}"
@@ -388,7 +392,7 @@ class SumoClient:
             data["torikumi"] = [
                 Match.from_torikumi(match) for match in data["torikumi"]
             ]
-            
+
         # Handle both 'bashoId' and 'date' fields in the response
         if "bashoId" not in data and "date" in data:
             data["bashoId"] = data["date"]

@@ -711,7 +711,7 @@ class TestSumoSyncClient:
             # Check that the underlying httpx client's request method was called correctly
             # The portal.call makes it a bit indirect to check directly on SumoClient's _make_request
             # So we check the call on the httpx.AsyncClient mock that SumoClient uses.
-            expected_url = f"/api/rikishi/{TEST_RIKISHI_ID}" # SumoClient appends /api
+            expected_url = f"/rikishi/{TEST_RIKISHI_ID}" # SumoClient already adds /api to base_url
             mock_httpx_instance.request.assert_called_once_with(
                 "GET", expected_url, params=None
             )

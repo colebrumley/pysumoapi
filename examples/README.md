@@ -3,9 +3,17 @@
 This directory contains example scripts that demonstrate how to use the PySumoAPI library.
 The library primarily features an asynchronous client (`SumoClient`) for efficient I/O operations.
 It also offers a `SumoSyncClient` for synchronous operations, suitable for scripts or notebooks where async/await is not preferred. See the main [README.md](../README.md) for `SumoSyncClient` usage details.
-The examples below focus on the `SumoClient`.
+The examples below primarily focus on the `SumoClient`, but a synchronous example is also provided.
 
 ## Available Examples
+
+### `sync_client_example.py`
+
+This example demonstrates how to use the `SumoSyncClient` for synchronous API calls. This is useful for scripts or interactive environments like Jupyter notebooks where `asyncio` might not be ideal. It shows how to:
+- Instantiate `SumoSyncClient` as a context manager.
+- Fetch data for a specific rikishi.
+- Fetch details for a specific basho.
+- Fetch a list of rikishi.
 
 ### `shikona_example.py`
 
@@ -33,6 +41,8 @@ To run an example, use the following command:
 python examples/shikona_example.py
 # or
 python examples/comprehensive_example.py
+# or
+python examples/sync_client_example.py
 ```
 
 ## Requirements

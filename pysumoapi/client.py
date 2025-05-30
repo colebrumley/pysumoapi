@@ -694,7 +694,10 @@ class SumoSyncClient:
                                 "SumoSyncClient must be used as a context manager. "
                                 "Call __enter__ before making API calls."
                             )
-                        return self_sync._portal.call(async_method_to_wrap, *args, **kwargs)
+                        # Wrap the call with functools.partial to handle kwargs correctly,
+                        # as portal.call itself only accepts *args.
+                        partial_func = functools.partial(async_method_to_wrap, *args, **kwargs)
+                        return self_sync._portal.call(partial_func)
                     return sync_wrapper
 
                 sync_method = sync_method_factory(async_method)

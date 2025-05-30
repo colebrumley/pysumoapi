@@ -678,31 +678,23 @@ class SumoSyncClient:
         self._portal_cm = None  # Initialize to None; portal will be created in __enter__
         self._portal = None
 
-        for attr_name in dir(self._async_client):
-            if attr_name.startswith('_'):
-                continue
+        for attr_name, async_method in inspect.getmembers(SumoClient, inspect.iscoroutinefunction):
+            def sync_method_factory(async_method_to_wrap):
+                @functools.wraps(async_method_to_wrap)
+                def sync_wrapper(self_sync, *args, **kwargs):
+                    if not self_sync._portal:
+                        raise RuntimeError(
+                            "SumoSyncClient must be used as a context manager. "
+                            "Call __enter__ before making API calls."
+                        )
+                    # Wrap the call with functools.partial to handle kwargs correctly,
+                    # as portal.call itself only accepts *args.
+                    partial_func = functools.partial(async_method_to_wrap, *args, **kwargs)
+                    return self_sync._portal.call(partial_func)
+                return sync_wrapper
 
-            async_method = getattr(self._async_client, attr_name)
-
-            if inspect.iscoroutinefunction(async_method):
-
-                def sync_method_factory(async_method_to_wrap):
-                    @functools.wraps(async_method_to_wrap)
-                    def sync_wrapper(self_sync, *args, **kwargs):
-                        if not self_sync._portal:
-                            raise RuntimeError(
-                                "SumoSyncClient must be used as a context manager. "
-                                "Call __enter__ before making API calls."
-                            )
-                        # Wrap the call with functools.partial to handle kwargs correctly,
-                        # as portal.call itself only accepts *args.
-                        partial_func = functools.partial(async_method_to_wrap, *args, **kwargs)
-                        return self_sync._portal.call(partial_func)
-                    return sync_wrapper
-
-                sync_method = sync_method_factory(async_method)
-                setattr(self, attr_name, types.MethodType(sync_method, self))
-
+            sync_method = sync_method_factory(async_method)
+            setattr(self, attr_name, types.MethodType(sync_method, self))
     def __enter__(self):
         """Enter the runtime context."""
         if self._portal_cm is None: # Should not happen if __init__ is correct

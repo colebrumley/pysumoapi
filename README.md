@@ -46,6 +46,23 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Synchronous Usage (SumoSyncClient)
+
+For environments where asyncio is not ideal (e.g., scripts, Jupyter notebooks), `SumoSyncClient` provides a synchronous interface:
+
+```python
+from pysumoapi import SumoSyncClient
+
+# All constructor arguments from SumoClient are also available for SumoSyncClient
+with SumoSyncClient(base_url="https://sumo-api.com") as client:
+    try:
+        rikishi = client.get_rikishi(rikishi_id="1") # Example call
+        print(rikishi.shikona_en)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+```
+The `SumoSyncClient` wraps the asynchronous `SumoClient` and manages an event loop internally when its methods are called. It **must** be used as a context manager (with a `with` statement).
+
 ## API Reference
 
 ### SumoClient

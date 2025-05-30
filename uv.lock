@@ -853,7 +853,7 @@ wheels = [
 
 [[package]]
 name = "pysumoapi"
-version = "0.1.5"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

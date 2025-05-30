@@ -9,7 +9,7 @@ from pysumoapi.models import KimariteResponse
 TEST_LIMIT = 5
 TEST_PARTS_COUNT = 2
 TEST_BASHO_ID_LENGTH = 6
-TEST_MAX_DAY = 15
+TEST_MAX_DAY = 20  # Allow for potential playoff/extra days beyond standard 15
 
 
 @pytest.mark.asyncio

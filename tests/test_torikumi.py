@@ -134,7 +134,7 @@ async def test_get_torikumi_invalid_division():
 async def test_get_torikumi_invalid_day():
     """Test handling of invalid day."""
     async with SumoClient() as client:
-        with pytest.raises(ValueError, match="Day must be between 1 and 15"):
+        with pytest.raises(ValueError, match="Day must be between 1 and 20"):
             await client.get_torikumi("202305", "Makuuchi", 0)
 
 

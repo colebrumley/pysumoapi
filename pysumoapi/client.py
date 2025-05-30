@@ -27,28 +27,74 @@ from pysumoapi.models import (
 class SumoClient:
     """Client for interacting with the Sumo API."""
 
-    def __init__(self, base_url: str = "https://sumo-api.com", verify_ssl: bool = True):
-        """Initialize the client with the base URL."""
+    def __init__(
+        self,
+        base_url: str = "https://sumo-api.com",
+        verify_ssl: bool = True,
+        connect_timeout: float = 5.0,
+        read_timeout: float = 5.0,
+        enable_http2: bool = True,
+        max_retries: int = 2,
+        retry_backoff_factor: float = 1.0,
+    ):
+        """Initialize the client with the base URL and HTTP configuration.
+
+        Args:
+            base_url: Base URL for the Sumo API
+            verify_ssl: Whether to verify SSL certificates
+            connect_timeout: Connection timeout in seconds
+            read_timeout: Read timeout in seconds
+            enable_http2: Whether to enable HTTP/2 support
+            max_retries: Maximum number of retry attempts
+            retry_backoff_factor: Factor for exponential backoff (delay = factor * (2 ** attempt))
+        """
         self.base_url = base_url.rstrip("/")
         self._client: Optional[httpx.AsyncClient] = None
         self.verify_ssl = verify_ssl
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+        self.enable_http2 = enable_http2
+        self.max_retries = max_retries
+        self.retry_backoff_factor = retry_backoff_factor
 
     async def __aenter__(self) -> "SumoClient":
         """Create an async context manager."""
         import ssl
 
-        try:
-            import certifi
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except (ImportError, FileNotFoundError):
-            # If certifi is not available or certificates are not found,
-            # create a default context without certificate verification
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
+        # Configure SSL verification
+        if self.verify_ssl:
+            try:
+                import certifi
+
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+            except (ImportError, FileNotFoundError):
+                raise RuntimeError(
+                    "certifi not available; set verify_ssl=False to proceed"
+                )
+        else:
+            ssl_context = False
+
+        # Configure timeout
+        timeout = httpx.Timeout(
+            connect=self.connect_timeout,
+            read=self.read_timeout,
+            write=self.read_timeout,  # Use read timeout for writes as well
+            pool=self.connect_timeout,  # Use connect timeout for pool
+        )
+
+        # Configure retry transport
+        from httpx import AsyncHTTPTransport
+
+        transport = AsyncHTTPTransport(
+            retries=self.max_retries,
+        )
 
         self._client = httpx.AsyncClient(
-            verify=ssl_context if self.verify_ssl else False
+            base_url=f"{self.base_url}/api",
+            verify=ssl_context,
+            timeout=timeout,
+            http2=self.enable_http2,
+            transport=transport,
         )
         return self
 
@@ -74,21 +120,29 @@ class SumoClient:
         Raises:
             httpx.HTTPStatusError: If the API returns an error status code
             ValueError: If the API returns a 404 with a specific error message
+            RuntimeError: If the response contains invalid JSON
         """
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
-        url = f"{self.base_url}/api{path}"
-        response = await self._client.request(method, url, params=params)
-        
+        response = await self._client.request(method, path, params=params)
+
         # Handle 404 errors with specific error messages
         if response.status_code == 404:
-            data = response.json()
-            if "error" in data:
-                raise ValueError(f"API Error: {data['error']}")
-            
+            try:
+                data = response.json()
+                if "error" in data:
+                    raise ValueError(f"API Error: {data['error']}")
+            except (KeyError, TypeError):
+                # If JSON decode fails or doesn't have error key, fall through to raise_for_status
+                pass
+
         response.raise_for_status()
-        return response.json()
+
+        try:
+            return response.json()
+        except Exception as e:
+            raise RuntimeError(f"Invalid JSON from API: {e}") from e
 
     async def get_rikishi(self, rikishi_id: str) -> Rikishi:
         """Get a single rikishi by ID."""
@@ -326,8 +380,8 @@ class SumoClient:
             raise ValueError("Invalid division")
 
         # Validate day
-        if not 1 <= day <= 15:
-            raise ValueError("Day must be between 1 and 15")
+        if not 1 <= day <= 20:
+            raise ValueError("Day must be between 1 and 20")
 
         data = await self._make_request(
             "GET", f"/basho/{basho_id}/torikumi/{division}/{day}"
@@ -338,7 +392,7 @@ class SumoClient:
             data["torikumi"] = [
                 Match.from_torikumi(match) for match in data["torikumi"]
             ]
-            
+
         # Handle both 'bashoId' and 'date' fields in the response
         if "bashoId" not in data and "date" in data:
             data["bashoId"] = data["date"]

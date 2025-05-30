@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pysumoapi"
-version = "0.1.5"
+version = "0.2.0"
 description = "A Python client library for the Sumo API"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -28,9 +28,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "httpx>=0.24.0",
+    "httpx[http2]>=0.24.0",
     "pydantic>=2.0.0",
-    "requests>=2.32.3",
     "certifi>=2024.2.0",
 ]
 
@@ -82,14 +81,14 @@ markers = [
 
 [tool.ruff]
 line-length = 88
-target-version = "0.1.5"
+target-version = "py39"
 select = ["E", "F", "B", "I", "N", "UP", "PL", "RUF"]
 
 [tool.ruff.isort]
 known-first-party = ["pysumoapi"]
 
 [tool.mypy]
-python_version = "0.1.5"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -97,8 +96,8 @@ check_untyped_defs = true
 
 [tool.black]
 line-length = 88
-target-version = ["py38"]
-include = '\.pyi?$' 
+target-version = ["py39"]
+include = '\.pyi?$'
 
 [dependency-groups]
 dev = [

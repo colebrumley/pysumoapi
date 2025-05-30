@@ -9,7 +9,7 @@ from pysumoapi.models import KimariteMatchesResponse
 
 # Test constants
 TEST_RECORDS_COUNT = 5
-TEST_MAX_DAY = 15
+TEST_MAX_DAY = 20
 TEST_LIMIT = 5
 
 

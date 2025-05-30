@@ -2,9 +2,11 @@
 Tests for the Sumo API client.
 """
 
+import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
+import httpx
 import pytest
 from zoneinfo import ZoneInfo
 
@@ -169,6 +171,42 @@ def mock_rikishis_response():
             }
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_sumo_client_initialization():
+    """Test that SumoClient initializes with custom HTTP configuration."""
+    client = SumoClient(
+        base_url="https://test-api.com",
+        verify_ssl=False,
+        connect_timeout=10.0,
+        read_timeout=15.0,
+        enable_http2=False,
+        max_retries=3,
+        retry_backoff_factor=2.0,
+    )
+    
+    assert client.base_url == "https://test-api.com"
+    assert client.verify_ssl is False
+    assert client.connect_timeout == 10.0
+    assert client.read_timeout == 15.0
+    assert client.enable_http2 is False
+    assert client.max_retries == 3
+    assert client.retry_backoff_factor == 2.0
+
+
+@pytest.mark.asyncio
+async def test_sumo_client_default_initialization():
+    """Test that SumoClient initializes with default values."""
+    client = SumoClient()
+    
+    assert client.base_url == "https://sumo-api.com"
+    assert client.verify_ssl is True
+    assert client.connect_timeout == 5.0
+    assert client.read_timeout == 5.0
+    assert client.enable_http2 is True
+    assert client.max_retries == 2
+    assert client.retry_backoff_factor == 1.0
 
 
 @pytest.mark.asyncio
@@ -414,18 +452,18 @@ async def test_get_rikishis_with_filters():
             # Verify the request parameters
             mock_request.assert_called_once_with(
                 "GET",
-                "https://sumo-api.com/api/rikishis",
+                "/rikishis",
                 params={
+                    "limit": TEST_CUSTOM_LIMIT,
+                    "skip": TEST_SKIP,
+                    "measurements": "true",
+                    "ranks": "true",
+                    "shikonas": "true",
                     "shikonaEn": "Test",
                     "heya": "Test Stable",
                     "sumodbId": TEST_SUMODB_ID,
                     "nskId": TEST_NSK_ID,
                     "intai": "false",
-                    "measurements": "true",
-                    "ranks": "true",
-                    "shikonas": "true",
-                    "limit": TEST_CUSTOM_LIMIT,
-                    "skip": TEST_SKIP,
                 },
             )
 
@@ -435,3 +473,163 @@ async def test_get_rikishis_with_filters():
     assert result.skip == TEST_SKIP
     assert result.total == 1
     assert len(result.records) == 1
+
+
+@pytest.mark.asyncio
+async def test_ssl_context_error_when_certifi_unavailable():
+    """Test that SSL verification fails when certifi is not available."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("certifi.where", side_effect=ImportError("No certifi")):
+            client = SumoClient(verify_ssl=True)
+            
+            with pytest.raises(RuntimeError, match="certifi not available; set verify_ssl=False to proceed"):
+                async with client:
+                    pass
+
+
+@pytest.mark.asyncio
+async def test_json_decode_error_handling():
+    """Test proper handling of invalid JSON responses."""
+    async with SumoClient() as client:
+        with patch.object(client._client, "request") as mock_request:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.side_effect = ValueError("Invalid JSON")
+            
+            mock_request.return_value = mock_response
+            
+            with pytest.raises(RuntimeError, match="Invalid JSON from API"):
+                await client._make_request("GET", "/test")
+
+
+@pytest.mark.asyncio
+async def test_retry_transport_configuration():
+    """Test that retry transport is configured correctly."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncHTTPTransport") as mock_transport_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+            
+            mock_transport = MagicMock()
+            mock_transport_class.return_value = mock_transport
+            
+            client = SumoClient(max_retries=3)
+            
+            async with client:
+                pass
+            
+            # Verify transport was created with correct retries
+            mock_transport_class.assert_called_once_with(retries=3)
+            
+            # Verify client was created with transport
+            mock_client_class.assert_called_once()
+            call_kwargs = mock_client_class.call_args[1]
+            assert call_kwargs["transport"] == mock_transport
+
+
+@pytest.mark.asyncio
+async def test_404_error_handling():
+    """Test proper handling of 404 errors with error messages."""
+    async with SumoClient() as client:
+        with patch.object(client._client, "request") as mock_request:
+            mock_404_response = MagicMock()
+            mock_404_response.status_code = 404
+            mock_404_response.json.return_value = {"error": "Rikishi not found"}
+            
+            # Mock raise_for_status to not raise since we handle 404s specially
+            mock_404_response.raise_for_status.return_value = None
+            
+            mock_request.return_value = mock_404_response
+            
+            with pytest.raises(ValueError, match="API Error: Rikishi not found"):
+                await client._make_request("GET", "/test")
+
+
+@pytest.mark.asyncio
+async def test_timeout_configuration():
+    """Test that timeout configuration is properly applied."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncHTTPTransport") as mock_transport_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+            
+            mock_transport = MagicMock()
+            mock_transport_class.return_value = mock_transport
+            
+            client = SumoClient(
+                connect_timeout=10.0,
+                read_timeout=15.0,
+                enable_http2=False,
+            )
+            
+            async with client:
+                pass
+            
+            # Verify AsyncClient was called with correct timeout configuration
+            mock_client_class.assert_called_once()
+            call_kwargs = mock_client_class.call_args[1]
+            
+            assert call_kwargs["http2"] is False
+            assert call_kwargs["base_url"] == "https://sumo-api.com/api"
+            assert call_kwargs["transport"] == mock_transport
+            
+            timeout = call_kwargs["timeout"]
+            assert timeout.connect == 10.0
+            assert timeout.read == 15.0
+            assert timeout.write == 15.0  # Should use read timeout
+            assert timeout.pool == 10.0   # Should use connect timeout
+
+
+@pytest.mark.asyncio
+async def test_ssl_context_with_certifi():
+    """Test SSL context creation when certifi is available."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("ssl.create_default_context") as mock_ssl_context:
+            with patch("certifi.where", return_value="/path/to/certs"):
+                mock_client = AsyncMock()
+                mock_client_class.return_value = mock_client
+                mock_client.__aenter__.return_value = mock_client
+                
+                client = SumoClient(verify_ssl=True)
+                
+                async with client:
+                    pass
+                
+                # Should have created SSL context with certifi
+                mock_ssl_context.assert_called_with(cafile="/path/to/certs")
+                assert mock_ssl_context.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_ssl_context_without_certifi_and_verify_false():
+    """Test SSL context creation when certifi is not available but verify_ssl=False."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncHTTPTransport") as mock_transport_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+            
+            mock_transport = MagicMock()
+            mock_transport_class.return_value = mock_transport
+            
+            client = SumoClient(verify_ssl=False)
+            
+            async with client:
+                pass
+            
+            # Verify AsyncClient was called with verify=False
+            mock_client_class.assert_called_once()
+            call_kwargs = mock_client_class.call_args[1]
+            assert call_kwargs["verify"] is False
+
+
+@pytest.mark.asyncio
+async def test_runtime_error_without_context_manager():
+    """Test that using client methods without context manager raises RuntimeError."""
+    client = SumoClient()
+    
+    with pytest.raises(RuntimeError, match="Client must be used as an async context manager"):
+        await client._make_request("GET", "/test")

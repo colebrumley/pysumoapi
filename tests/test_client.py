@@ -3,6 +3,7 @@ Tests for the Sumo API client.
 """
 
 import asyncio
+import inspect
 from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -662,6 +663,19 @@ class TestSumoSyncClient:
             mock_portal_cm_instance.__exit__.return_value = None # __exit__ returns False or None on success
             mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
 
+            # Configure the mock portal's call method to actually execute the function
+            def mock_portal_call(func, *args, **kwargs):
+                if callable(func):
+                    result = func(*args, **kwargs)
+                    # If the result is a coroutine, we need to run it
+                    if inspect.iscoroutine(result):
+                        import asyncio
+                        return asyncio.get_event_loop().run_until_complete(result)
+                    return result
+                return func  # If it's not callable, just return it
+            
+            mock_actual_portal.call.side_effect = mock_portal_call
+
             # Mock the underlying async client's context methods
             # These are called by the portal
             mock_async_client_actual_instance = AsyncMock()
@@ -698,6 +712,19 @@ class TestSumoSyncClient:
             mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
             mock_portal_cm_instance.__exit__.return_value = None
             mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
+
+            # Configure the mock portal's call method to actually execute the function
+            def mock_portal_call(func, *args, **kwargs):
+                if callable(func):
+                    result = func(*args, **kwargs)
+                    # If the result is a coroutine, we need to run it
+                    if inspect.iscoroutine(result):
+                        import asyncio
+                        return asyncio.get_event_loop().run_until_complete(result)
+                    return result
+                return func  # If it's not callable, just return it
+            
+            mock_actual_portal.call.side_effect = mock_portal_call
 
             # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
             with patch("pysumoapi.client.httpx.AsyncClient") as MockAsyncHTTPXClient:
@@ -746,6 +773,19 @@ class TestSumoSyncClient:
             # __exit__ on CM might be called with exception details
             mock_portal_cm_instance.__exit__ = MagicMock(return_value=None)
             mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
+
+            # Configure the mock portal's call method to actually execute the function
+            def mock_portal_call(func, *args, **kwargs):
+                if callable(func):
+                    result = func(*args, **kwargs)
+                    # If the result is a coroutine, we need to run it
+                    if inspect.iscoroutine(result):
+                        import asyncio
+                        return asyncio.get_event_loop().run_until_complete(result)
+                    return result
+                return func  # If it's not callable, just return it
+            
+            mock_actual_portal.call.side_effect = mock_portal_call
 
             mock_async_client_actual_instance = AsyncMock()
             mock_async_client_actual_instance.__aenter__ = AsyncMock(return_value=mock_async_client_actual_instance)

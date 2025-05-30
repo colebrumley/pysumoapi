@@ -679,21 +679,23 @@ class SumoSyncClient:
         self._portal = None
 
         for attr_name, async_method in inspect.getmembers(SumoClient, inspect.iscoroutinefunction):
-            def sync_method_factory(async_method_to_wrap):
-                @functools.wraps(async_method_to_wrap)
+            def sync_method_factory(method_name):
+                @functools.wraps(async_method)
                 def sync_wrapper(self_sync, *args, **kwargs):
                     if not self_sync._portal:
                         raise RuntimeError(
                             "SumoSyncClient must be used as a context manager. "
                             "Call __enter__ before making API calls."
                         )
+                    # Get the bound method from the async client instance
+                    bound_method = getattr(self_sync._async_client, method_name)
                     # Wrap the call with functools.partial to handle kwargs correctly,
                     # as portal.call itself only accepts *args.
-                    partial_func = functools.partial(async_method_to_wrap, *args, **kwargs)
+                    partial_func = functools.partial(bound_method, *args, **kwargs)
                     return self_sync._portal.call(partial_func)
                 return sync_wrapper
 
-            sync_method = sync_method_factory(async_method)
+            sync_method = sync_method_factory(attr_name)
             setattr(self, attr_name, types.MethodType(sync_method, self))
     def __enter__(self):
         """Enter the runtime context."""

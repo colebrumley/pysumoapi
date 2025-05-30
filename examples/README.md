@@ -1,6 +1,9 @@
 # PySumoAPI Examples
 
 This directory contains example scripts that demonstrate how to use the PySumoAPI library.
+The library primarily features an asynchronous client (`SumoClient`) for efficient I/O operations.
+It also offers a `SumoSyncClient` for synchronous operations, suitable for scripts or notebooks where async/await is not preferred. See the main [README.md](../README.md) for `SumoSyncClient` usage details.
+The examples below focus on the `SumoClient`.
 
 ## Available Examples
 

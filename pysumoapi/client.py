@@ -654,3 +654,59 @@ class SumoClient:
             shikonas.sort(key=lambda s: s.basho_id, reverse=(sort_order == "desc"))
 
         return shikonas
+
+
+import anyio
+import inspect
+import functools
+import types
+
+class SumoSyncClient:
+    """Synchronous client for interacting with the Sumo API."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the synchronous client.
+
+        Args:
+            *args: Positional arguments to pass to SumoClient
+            **kwargs: Keyword arguments to pass to SumoClient
+        """
+        self._args = args
+        self._kwargs = kwargs
+        self._async_client = SumoClient(*args, **kwargs)
+        self._portal = None
+
+        for attr_name in dir(self._async_client):
+            if attr_name.startswith('_'):
+                continue
+
+            async_method = getattr(self._async_client, attr_name)
+
+            if inspect.iscoroutinefunction(async_method):
+                
+                def sync_method_factory(async_method_to_wrap):
+                    @functools.wraps(async_method_to_wrap)
+                    def sync_wrapper(self_sync, *args, **kwargs):
+                        if not self_sync._portal:
+                            raise RuntimeError(
+                                "SumoSyncClient must be used as a context manager. "
+                                "Call __enter__ before making API calls."
+                            )
+                        return self_sync._portal.call(async_method_to_wrap, *args, **kwargs)
+                    return sync_wrapper
+
+                sync_method = sync_method_factory(async_method)
+                setattr(self, attr_name, types.MethodType(sync_method, self))
+
+    def __enter__(self):
+        """Enter the runtime context."""
+        self._portal = anyio.from_thread.start_blocking_portal()
+        self._portal.call(self._async_client.__aenter__)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the runtime context."""
+        if self._portal:
+            self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
+            self._portal.close()
+            self._portal = None

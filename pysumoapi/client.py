@@ -675,7 +675,7 @@ class SumoSyncClient:
         self._args = args
         self._kwargs = kwargs
         self._async_client = SumoClient(*args, **kwargs)
-        self._portal_cm = anyio.from_thread.start_blocking_portal()
+        self._portal_cm = None  # Initialize to None; portal will be created in __enter__
         self._portal = None
 
         for attr_name in dir(self._async_client):

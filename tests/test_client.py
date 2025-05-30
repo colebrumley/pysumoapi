@@ -691,36 +691,43 @@ class TestSumoSyncClient:
     def test_sync_get_rikishi(self, mock_rikishi_response):
         """Test a representative API call (get_rikishi) with SumoSyncClient."""
 
-        # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
-        with patch("pysumoapi.client.httpx.AsyncClient") as MockAsyncHTTPXClient:
-            mock_httpx_instance = AsyncMock()
-            # Configure the mock_httpx_instance.request to return a mock response
-            mock_http_response = AsyncMock()
-            mock_http_response.json = MagicMock(return_value=mock_rikishi_response)
-            mock_http_response.status_code = 200
-            mock_http_response.raise_for_status = MagicMock() # Ensure it doesn't raise
+        # Mock the blocking portal
+        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+            mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
+            mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
+            mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
+            mock_portal_cm_instance.__exit__.return_value = None
+            mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
 
-            mock_httpx_instance.request = AsyncMock(return_value=mock_http_response)
+            # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
+            with patch("pysumoapi.client.httpx.AsyncClient") as MockAsyncHTTPXClient:
+                mock_httpx_instance = AsyncMock()
+                # Configure the mock_httpx_instance.request to return a mock response
+                mock_http_response = AsyncMock()
+                mock_http_response.json = MagicMock(return_value=mock_rikishi_response)
+                mock_http_response.status_code = 200
+                mock_http_response.raise_for_status = MagicMock() # Ensure it doesn't raise
 
-            # When SumoClient tries to create an httpx.AsyncClient, it gets our mock
-            MockAsyncHTTPXClient.return_value = mock_httpx_instance
+                mock_httpx_instance.request = AsyncMock(return_value=mock_http_response)
 
-            # The SumoSyncClient will create a SumoClient, which will use the mocked httpx.AsyncClient
-            with SumoSyncClient(base_url="https://sumo-api.com") as client:
-                rikishi = client.get_rikishi(str(TEST_RIKISHI_ID))
+                # When SumoClient tries to create an httpx.AsyncClient, it gets our mock
+                MockAsyncHTTPXClient.return_value = mock_httpx_instance
 
-            assert isinstance(rikishi, Rikishi)
-            assert rikishi.id == TEST_RIKISHI_ID
-            assert rikishi.shikona_en == "Test Rikishi"
+                # The SumoSyncClient will create a SumoClient, which will use the mocked httpx.AsyncClient
+                with SumoSyncClient(base_url="https://sumo-api.com") as client:
+                    rikishi = client.get_rikishi(str(TEST_RIKISHI_ID))
 
-            # Check that the underlying httpx client's request method was called correctly
-            # The portal.call makes it a bit indirect to check directly on SumoClient's _make_request
-            # So we check the call on the httpx.AsyncClient mock that SumoClient uses.
-            expected_url = f"/rikishi/{TEST_RIKISHI_ID}" # Path relative to client's base_url
-            mock_httpx_instance.request.assert_called_once_with(
-                "GET", expected_url, params=None
-            )
+                assert isinstance(rikishi, Rikishi)
+                assert rikishi.id == TEST_RIKISHI_ID
+                assert rikishi.shikona_en == "Test Rikishi"
 
+                # Check that the underlying httpx client's request method was called correctly
+                # The portal.call makes it a bit indirect to check directly on SumoClient's _make_request
+                # So we check the call on the httpx.AsyncClient mock that SumoClient uses.
+                expected_url = f"/rikishi/{TEST_RIKISHI_ID}" # Path relative to client's base_url
+                mock_httpx_instance.request.assert_called_once_with(
+                    "GET", expected_url, params=None
+                )
     def test_sync_get_rikishi_no_context_manager(self, mock_rikishi_response):
         """Test calling an API method on SumoSyncClient outside of a 'with' block."""
         # Patch httpx.AsyncClient to prevent actual HTTP calls during SumoClient init

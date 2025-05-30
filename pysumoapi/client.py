@@ -660,6 +660,7 @@ import anyio
 import inspect
 import functools
 import types
+import sys # Add sys import for sys.exc_info()
 
 class SumoSyncClient:
     """Synchronous client for interacting with the Sumo API."""
@@ -674,6 +675,7 @@ class SumoSyncClient:
         self._args = args
         self._kwargs = kwargs
         self._async_client = SumoClient(*args, **kwargs)
+        self._portal_cm = anyio.from_thread.start_blocking_portal()
         self._portal = None
 
         for attr_name in dir(self._async_client):
@@ -682,8 +684,8 @@ class SumoSyncClient:
 
             async_method = getattr(self._async_client, attr_name)
 
-            if inspect.iscoroutinefunction(async_method.__func__):
-                
+            if inspect.iscoroutinefunction(async_method):
+
                 def sync_method_factory(async_method_to_wrap):
                     @functools.wraps(async_method_to_wrap)
                     def sync_wrapper(self_sync, *args, **kwargs):
@@ -700,15 +702,26 @@ class SumoSyncClient:
 
     def __enter__(self):
         """Enter the runtime context."""
-        self._portal_cm = anyio.from_thread.start_blocking_portal()
+        if self._portal_cm is None: # Should not happen if __init__ is correct
+            self._portal_cm = anyio.from_thread.start_blocking_portal()
         self._portal = self._portal_cm.__enter__()
-        self._portal.call(self._async_client.__aenter__)
+        try:
+            self._portal.call(self._async_client.__aenter__)
+        except Exception:
+            # If __aenter__ fails, make sure to exit the portal_cm as well
+            self._portal_cm.__exit__(*sys.exc_info())
+            self._portal = None # Reset portal as it's not properly entered
+            self._portal_cm = None # Reset portal_cm as it's exited
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the runtime context."""
-        if self._portal:
-            self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
-            self._portal_cm.__exit__(None, None, None)
-            self._portal = None
-            self._portal_cm = None
+        if self._portal: # Check if portal was successfully obtained in __enter__
+            try:
+                self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
+            finally: # Ensure portal_cm.__exit__ is called even if the above line fails
+                if self._portal_cm:
+                    self._portal_cm.__exit__(exc_type, exc_val, exc_tb)
+                self._portal = None
+                self._portal_cm = None

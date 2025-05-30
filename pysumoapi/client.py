@@ -672,15 +672,13 @@ class SumoSyncClient:
             *args: Positional arguments to pass to SumoClient
             **kwargs: Keyword arguments to pass to SumoClient
         """
-        self._args = args
-        self._kwargs = kwargs
         self._async_client = SumoClient(*args, **kwargs)
         self._portal_cm = None  # Initialize to None; portal will be created in __enter__
         self._portal = None
 
         for attr_name, async_method in inspect.getmembers(SumoClient, inspect.iscoroutinefunction):
-            def sync_method_factory(method_name):
-                @functools.wraps(async_method)
+            def sync_method_factory(method_name, orig_method):
+                @functools.wraps(orig_method)
                 def sync_wrapper(self_sync, *args, **kwargs):
                     if not self_sync._portal:
                         raise RuntimeError(
@@ -695,7 +693,7 @@ class SumoSyncClient:
                     return self_sync._portal.call(partial_func)
                 return sync_wrapper
 
-            sync_method = sync_method_factory(attr_name)
+            sync_method = sync_method_factory(attr_name, async_method)
             setattr(self, attr_name, types.MethodType(sync_method, self))
     def __enter__(self):
         """Enter the runtime context."""

@@ -755,6 +755,65 @@ class TestSumoSyncClient:
                 mock_httpx_instance.request.assert_called_once_with(
                     "GET", expected_url, params=None
                 )
+
+    def test_sync_get_rikishis_with_params(self, mock_rikishis_response):
+        """Test a sync API call with multiple parameters (get_rikishis)."""
+    
+        # Mock the blocking portal
+        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+            mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
+            mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
+            mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
+            mock_portal_cm_instance.__exit__.return_value = None
+            mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
+
+            # Configure the mock portal's call method to actually execute the function
+            def mock_portal_call(func, *args, **kwargs):
+                if callable(func):
+                    result = func(*args, **kwargs)
+                    # If the result is a coroutine, we need to run it
+                    if inspect.iscoroutine(result):
+                        import asyncio
+                        return asyncio.get_event_loop().run_until_complete(result)
+                    return result
+                return func  # If it's not callable, just return it
+        
+            mock_actual_portal.call.side_effect = mock_portal_call
+
+            # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
+            with patch("pysumoapi.client.httpx.AsyncClient") as MockAsyncHTTPXClient:
+                mock_httpx_instance = AsyncMock()
+                # Configure the mock_httpx_instance.request to return a mock response
+                mock_http_response = AsyncMock()
+                mock_http_response.json = MagicMock(return_value=mock_rikishis_response)
+                mock_http_response.status_code = 200
+                mock_http_response.raise_for_status = MagicMock() # Ensure it doesn't raise
+
+                mock_httpx_instance.request = AsyncMock(return_value=mock_http_response)
+
+                # When SumoClient tries to create an httpx.AsyncClient, it gets our mock
+                MockAsyncHTTPXClient.return_value = mock_httpx_instance
+
+                # Test with various parameter types (string, int, bool)
+                with SumoSyncClient(base_url="https://sumo-api.com") as client:
+                    result = client.get_rikishis(
+                        shikona_en="Test",
+                        sumodb_id=123,
+                        intai=False,
+                        limit=20,
+                        skip=5
+                    )
+
+                assert isinstance(result, RikishiList)
+                assert result.total == 1
+                assert len(result.records) == 1
+
+                # Verify the parameters were passed correctly
+                mock_httpx_instance.request.assert_called_once()
+                call_args = mock_httpx_instance.request.call_args
+                assert call_args[0] == ("GET", "/rikishis")
+                # Check that params were passed (we don't need to verify exact params as that's tested elsewhere)
+                assert "params" in call_args[1]
     def test_sync_get_rikishi_no_context_manager(self, mock_rikishi_response):
         """Test calling an API method on SumoSyncClient outside of a 'with' block."""
         # Patch httpx.AsyncClient to prevent actual HTTP calls during SumoClient init

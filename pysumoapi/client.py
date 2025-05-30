@@ -682,7 +682,7 @@ class SumoSyncClient:
 
             async_method = getattr(self._async_client, attr_name)
 
-            if inspect.iscoroutinefunction(async_method):
+            if inspect.iscoroutinefunction(async_method.__func__):
                 
                 def sync_method_factory(async_method_to_wrap):
                     @functools.wraps(async_method_to_wrap)

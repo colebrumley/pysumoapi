@@ -700,7 +700,8 @@ class SumoSyncClient:
 
     def __enter__(self):
         """Enter the runtime context."""
-        self._portal = anyio.from_thread.start_blocking_portal()
+        self._portal_cm = anyio.from_thread.start_blocking_portal()
+        self._portal = self._portal_cm.__enter__()
         self._portal.call(self._async_client.__aenter__)
         return self
 
@@ -708,5 +709,6 @@ class SumoSyncClient:
         """Exit the runtime context."""
         if self._portal:
             self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
-            self._portal.close()
+            self._portal_cm.__exit__(None, None, None)
             self._portal = None
+            self._portal_cm = None

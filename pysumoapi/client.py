@@ -1,7 +1,12 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import asyncio
 import httpx
+from httpx import AsyncHTTPTransport as _AsyncHTTPTransport
+AsyncHTTPTransport = _AsyncHTTPTransport
+import inspect
+import os
 
 from pysumoapi.models import (
     Banzuke,
@@ -67,6 +72,11 @@ class SumoClient:
                 import certifi
 
                 ssl_context = ssl.create_default_context(cafile=certifi.where())
+                if os.environ.get("SSL_CERT_FILE"):
+                    try:
+                        ssl_context.load_verify_locations(os.environ["SSL_CERT_FILE"])
+                    except FileNotFoundError:
+                        pass
             except (ImportError, FileNotFoundError):
                 raise RuntimeError(
                     "certifi not available; set verify_ssl=False to proceed"
@@ -83,10 +93,30 @@ class SumoClient:
         )
 
         # Configure retry transport
-        from httpx import AsyncHTTPTransport
+        transport_cls = httpx.AsyncHTTPTransport
+        if AsyncHTTPTransport is not _AsyncHTTPTransport:
+            transport_cls = AsyncHTTPTransport
 
-        transport = AsyncHTTPTransport(
-            retries=self.max_retries,
+        transport_kwargs = {"retries": self.max_retries}
+        if "retry_backoff_factor" in inspect.signature(transport_cls).parameters:
+            transport_kwargs["retry_backoff_factor"] = self.retry_backoff_factor
+            self._manual_backoff = False
+        else:
+            self._manual_backoff = True
+
+        proxy = (
+            os.environ.get("https_proxy")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("http_proxy")
+            or os.environ.get("HTTP_PROXY")
+        )
+        if proxy:
+            transport_kwargs["proxy"] = proxy
+
+        transport = transport_cls(
+            verify=ssl_context,
+            trust_env=True,
+            **transport_kwargs,
         )
 
         self._client = httpx.AsyncClient(
@@ -125,7 +155,21 @@ class SumoClient:
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
-        response = await self._client.request(method, path, params=params)
+        attempt = 0
+        delay = self.retry_backoff_factor
+        while True:
+            try:
+                response = await self._client.request(method, path, params=params)
+                break
+            except httpx.HTTPError:
+                if (
+                    not getattr(self, "_manual_backoff", False)
+                    or attempt >= self.max_retries
+                ):
+                    raise
+                attempt += 1
+                await asyncio.sleep(delay)
+                delay *= 2
 
         # Handle 404 errors with specific error messages
         if response.status_code == 404:
@@ -657,10 +701,10 @@ class SumoClient:
 
 
 import anyio
-import inspect
 import functools
 import types
-import sys # Add sys import for sys.exc_info()
+import sys  # Add sys import for sys.exc_info()
+
 
 class SumoSyncClient:
     """Synchronous client for interacting with the Sumo API."""
@@ -673,10 +717,15 @@ class SumoSyncClient:
             **kwargs: Keyword arguments to pass to SumoClient
         """
         self._async_client = SumoClient(*args, **kwargs)
-        self._portal_cm = None  # Initialize to None; portal will be created in __enter__
+        self._portal_cm = (
+            None  # Initialize to None; portal will be created in __enter__
+        )
         self._portal = None
 
-        for attr_name, async_method in inspect.getmembers(SumoClient, inspect.iscoroutinefunction):
+        for attr_name, async_method in inspect.getmembers(
+            SumoClient, inspect.iscoroutinefunction
+        ):
+
             def sync_method_factory(method_name, orig_method):
                 @functools.wraps(orig_method)
                 def sync_wrapper(self_sync, *args, **kwargs):
@@ -691,13 +740,15 @@ class SumoSyncClient:
                     # as portal.call itself only accepts *args.
                     partial_func = functools.partial(bound_method, *args, **kwargs)
                     return self_sync._portal.call(partial_func)
+
                 return sync_wrapper
 
             sync_method = sync_method_factory(attr_name, async_method)
             setattr(self, attr_name, types.MethodType(sync_method, self))
+
     def __enter__(self):
         """Enter the runtime context."""
-        if self._portal_cm is None: # Should not happen if __init__ is correct
+        if self._portal_cm is None:  # Should not happen if __init__ is correct
             self._portal_cm = anyio.from_thread.start_blocking_portal()
         self._portal = self._portal_cm.__enter__()
         try:
@@ -705,17 +756,19 @@ class SumoSyncClient:
         except Exception:
             # If __aenter__ fails, make sure to exit the portal_cm as well
             self._portal_cm.__exit__(*sys.exc_info())
-            self._portal = None # Reset portal as it's not properly entered
-            self._portal_cm = None # Reset portal_cm as it's exited
+            self._portal = None  # Reset portal as it's not properly entered
+            self._portal_cm = None  # Reset portal_cm as it's exited
             raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the runtime context."""
-        if self._portal: # Check if portal was successfully obtained in __enter__
+        if self._portal:  # Check if portal was successfully obtained in __enter__
             try:
-                self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
-            finally: # Ensure portal_cm.__exit__ is called even if the above line fails
+                self._portal.call(
+                    self._async_client.__aexit__, exc_type, exc_val, exc_tb
+                )
+            finally:  # Ensure portal_cm.__exit__ is called even if the above line fails
                 if self._portal_cm:
                     self._portal_cm.__exit__(exc_type, exc_val, exc_tb)
                 self._portal = None

@@ -186,7 +186,7 @@ async def test_sumo_client_initialization():
         max_retries=3,
         retry_backoff_factor=2.0,
     )
-    
+
     assert client.base_url == "https://test-api.com"
     assert client.verify_ssl is False
     assert client.connect_timeout == 10.0
@@ -200,7 +200,7 @@ async def test_sumo_client_initialization():
 async def test_sumo_client_default_initialization():
     """Test that SumoClient initializes with default values."""
     client = SumoClient()
-    
+
     assert client.base_url == "https://sumo-api.com"
     assert client.verify_ssl is True
     assert client.connect_timeout == 5.0
@@ -482,8 +482,11 @@ async def test_ssl_context_error_when_certifi_unavailable():
     with patch("httpx.AsyncClient") as mock_client_class:
         with patch("certifi.where", side_effect=ImportError("No certifi")):
             client = SumoClient(verify_ssl=True)
-            
-            with pytest.raises(RuntimeError, match="certifi not available; set verify_ssl=False to proceed"):
+
+            with pytest.raises(
+                RuntimeError,
+                match="certifi not available; set verify_ssl=False to proceed",
+            ):
                 async with client:
                     pass
 
@@ -497,9 +500,9 @@ async def test_json_decode_error_handling():
             mock_response.status_code = 200
             mock_response.raise_for_status.return_value = None
             mock_response.json.side_effect = ValueError("Invalid JSON")
-            
+
             mock_request.return_value = mock_response
-            
+
             with pytest.raises(RuntimeError, match="Invalid JSON from API"):
                 await client._make_request("GET", "/test")
 
@@ -512,22 +515,99 @@ async def test_retry_transport_configuration():
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
-            
+
             mock_transport = MagicMock()
             mock_transport_class.return_value = mock_transport
-            
+
             client = SumoClient(max_retries=3)
-            
+
             async with client:
                 pass
-            
-            # Verify transport was created with correct retries
-            mock_transport_class.assert_called_once_with(retries=3)
-            
+
+            # Verify transport was created with correct retries and SSL context
+            mock_transport_class.assert_called_once()
+            call_args, call_kwargs = mock_transport_class.call_args
+            assert call_kwargs["retries"] == 3
+            assert "verify" in call_kwargs
+            assert call_kwargs["trust_env"] is True
+
             # Verify client was created with transport
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
             assert call_kwargs["transport"] == mock_transport
+
+
+@pytest.mark.asyncio
+async def test_retry_backoff_passed_when_supported():
+    """Ensure retry_backoff_factor is forwarded when transport supports it."""
+
+    class DummyTransport:
+        def __init__(
+            self,
+            *,
+            retries: int,
+            retry_backoff_factor: float,
+            **kwargs,
+        ) -> None:
+            self.retries = retries
+            self.retry_backoff_factor = retry_backoff_factor
+
+    with patch("pysumoapi.client.AsyncHTTPTransport", new=DummyTransport):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+
+            client = SumoClient(
+                max_retries=2, retry_backoff_factor=0.5, verify_ssl=False
+            )
+
+            async with client:
+                pass
+
+            call_kwargs = mock_client_class.call_args[1]
+            transport = call_kwargs["transport"]
+            assert isinstance(transport, DummyTransport)
+            assert transport.retries == 2
+            assert transport.retry_backoff_factor == 0.5
+
+
+@pytest.mark.asyncio
+async def test_manual_backoff_when_transport_lacks_support():
+    """Manual exponential backoff should run if transport lacks parameter."""
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncHTTPTransport") as mock_transport_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+
+            mock_transport = MagicMock()
+            mock_transport_class.return_value = mock_transport
+
+            response = MagicMock(
+                status_code=200, json=lambda: {}, raise_for_status=lambda: None
+            )
+
+            async def side_effect(*args, **kwargs):
+                if side_effect.calls == 0:
+                    side_effect.calls += 1
+                    raise httpx.ConnectError(
+                        "fail", request=httpx.Request("GET", "https://test")
+                    )
+                return response
+
+            side_effect.calls = 0
+            mock_client.request.side_effect = side_effect
+
+            with patch("asyncio.sleep", new=AsyncMock()) as mock_sleep:
+                client = SumoClient(
+                    max_retries=1, retry_backoff_factor=0.5, verify_ssl=False
+                )
+                async with client:
+                    result = await client._make_request("GET", "/test")
+
+                assert result == {}
+                mock_sleep.assert_awaited_once_with(0.5)
 
 
 @pytest.mark.asyncio
@@ -538,12 +618,12 @@ async def test_404_error_handling():
             mock_404_response = MagicMock()
             mock_404_response.status_code = 404
             mock_404_response.json.return_value = {"error": "Rikishi not found"}
-            
+
             # Mock raise_for_status to not raise since we handle 404s specially
             mock_404_response.raise_for_status.return_value = None
-            
+
             mock_request.return_value = mock_404_response
-            
+
             with pytest.raises(ValueError, match="API Error: Rikishi not found"):
                 await client._make_request("GET", "/test")
 
@@ -556,32 +636,32 @@ async def test_timeout_configuration():
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
-            
+
             mock_transport = MagicMock()
             mock_transport_class.return_value = mock_transport
-            
+
             client = SumoClient(
                 connect_timeout=10.0,
                 read_timeout=15.0,
                 enable_http2=False,
             )
-            
+
             async with client:
                 pass
-            
+
             # Verify AsyncClient was called with correct timeout configuration
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
-            
+
             assert call_kwargs["http2"] is False
             assert call_kwargs["base_url"] == "https://sumo-api.com/api"
             assert call_kwargs["transport"] == mock_transport
-            
+
             timeout = call_kwargs["timeout"]
             assert timeout.connect == 10.0
             assert timeout.read == 15.0
             assert timeout.write == 15.0  # Should use read timeout
-            assert timeout.pool == 10.0   # Should use connect timeout
+            assert timeout.pool == 10.0  # Should use connect timeout
 
 
 @pytest.mark.asyncio
@@ -593,12 +673,12 @@ async def test_ssl_context_with_certifi():
                 mock_client = AsyncMock()
                 mock_client_class.return_value = mock_client
                 mock_client.__aenter__.return_value = mock_client
-                
+
                 client = SumoClient(verify_ssl=True)
-                
+
                 async with client:
                     pass
-                
+
                 # Should have created SSL context with certifi
                 mock_ssl_context.assert_called_with(cafile="/path/to/certs")
                 assert mock_ssl_context.call_count >= 1
@@ -612,15 +692,15 @@ async def test_ssl_context_without_certifi_and_verify_false():
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
             mock_client.__aenter__.return_value = mock_client
-            
+
             mock_transport = MagicMock()
             mock_transport_class.return_value = mock_transport
-            
+
             client = SumoClient(verify_ssl=False)
-            
+
             async with client:
                 pass
-            
+
             # Verify AsyncClient was called with verify=False
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
@@ -631,14 +711,17 @@ async def test_ssl_context_without_certifi_and_verify_false():
 async def test_runtime_error_without_context_manager():
     """Test that using client methods without context manager raises RuntimeError."""
     client = SumoClient()
-    
-    with pytest.raises(RuntimeError, match="Client must be used as an async context manager"):
+
+    with pytest.raises(
+        RuntimeError, match="Client must be used as an async context manager"
+    ):
         await client._make_request("GET", "/test")
 
 
 # Tests for SumoSyncClient
 
-from pysumoapi.client import SumoSyncClient # Import the synchronous client
+from pysumoapi.client import SumoSyncClient  # Import the synchronous client
+
 
 @pytest.fixture
 def mock_portal():
@@ -648,6 +731,7 @@ def mock_portal():
     mock_portal_instance.call = MagicMock(return_value=None)
     return mock_portal_instance
 
+
 class TestSumoSyncClient:
     """Tests for the SumoSyncClient."""
 
@@ -656,11 +740,15 @@ class TestSumoSyncClient:
 
         # We need to mock what happens inside __aenter__ and __aexit__ of the async_client
         # and the portal creation/closing.
-        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+        with patch(
+            "anyio.from_thread.start_blocking_portal"
+        ) as mock_start_portal_cm_constructor:
             mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
             mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
             mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
-            mock_portal_cm_instance.__exit__.return_value = None # __exit__ returns False or None on success
+            mock_portal_cm_instance.__exit__.return_value = (
+                None  # __exit__ returns False or None on success
+            )
             mock_start_portal_cm_constructor.return_value = mock_portal_cm_instance
 
             # Configure the mock portal's call method to actually execute the function
@@ -670,43 +758,56 @@ class TestSumoSyncClient:
                     # If the result is a coroutine, we need to run it
                     if inspect.iscoroutine(result):
                         import asyncio
+
                         return asyncio.get_event_loop().run_until_complete(result)
                     return result
                 return func  # If it's not callable, just return it
-            
+
             mock_actual_portal.call.side_effect = mock_portal_call
 
             # Mock the underlying async client's context methods
             # These are called by the portal
             mock_async_client_actual_instance = AsyncMock()
-            mock_async_client_actual_instance.__aenter__ = AsyncMock(return_value=mock_async_client_actual_instance)
+            mock_async_client_actual_instance.__aenter__ = AsyncMock(
+                return_value=mock_async_client_actual_instance
+            )
             mock_async_client_actual_instance.__aexit__ = AsyncMock()
 
             # Mock the SumoClient constructor to return our pre-mocked async client instance
             with patch("pysumoapi.client.SumoClient") as mock_sumo_client_constructor:
-                mock_sumo_client_constructor.return_value = mock_async_client_actual_instance
+                mock_sumo_client_constructor.return_value = (
+                    mock_async_client_actual_instance
+                )
 
                 client = SumoSyncClient(base_url="https://test.com")
                 assert client._portal is None
 
                 with client:
-                    assert client._portal == mock_actual_portal # Assert it's the object returned by __enter__
+                    assert (
+                        client._portal == mock_actual_portal
+                    )  # Assert it's the object returned by __enter__
                     mock_start_portal_cm_constructor.assert_called_once()
                     mock_portal_cm_instance.__enter__.assert_called_once()
                     # Check that the actual portal called the async client's __aenter__
-                    mock_actual_portal.call.assert_any_call(mock_async_client_actual_instance.__aenter__)
+                    mock_actual_portal.call.assert_any_call(
+                        mock_async_client_actual_instance.__aenter__
+                    )
 
                 # Check that actual portal called async_client's __aexit__
-                mock_actual_portal.call.assert_any_call(mock_async_client_actual_instance.__aexit__, None, None, None)
+                mock_actual_portal.call.assert_any_call(
+                    mock_async_client_actual_instance.__aexit__, None, None, None
+                )
                 # Check that the portal context manager's __exit__ was called
                 mock_portal_cm_instance.__exit__.assert_called_with(None, None, None)
-                assert client._portal is None # Portal should be reset after exit
+                assert client._portal is None  # Portal should be reset after exit
 
     def test_sync_get_rikishi(self, mock_rikishi_response):
         """Test a representative API call (get_rikishi) with SumoSyncClient."""
 
         # Mock the blocking portal
-        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+        with patch(
+            "anyio.from_thread.start_blocking_portal"
+        ) as mock_start_portal_cm_constructor:
             mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
             mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
             mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
@@ -720,10 +821,11 @@ class TestSumoSyncClient:
                     # If the result is a coroutine, we need to run it
                     if inspect.iscoroutine(result):
                         import asyncio
+
                         return asyncio.get_event_loop().run_until_complete(result)
                     return result
                 return func  # If it's not callable, just return it
-            
+
             mock_actual_portal.call.side_effect = mock_portal_call
 
             # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
@@ -733,7 +835,9 @@ class TestSumoSyncClient:
                 mock_http_response = AsyncMock()
                 mock_http_response.json = MagicMock(return_value=mock_rikishi_response)
                 mock_http_response.status_code = 200
-                mock_http_response.raise_for_status = MagicMock() # Ensure it doesn't raise
+                mock_http_response.raise_for_status = (
+                    MagicMock()
+                )  # Ensure it doesn't raise
 
                 mock_httpx_instance.request = AsyncMock(return_value=mock_http_response)
 
@@ -751,16 +855,20 @@ class TestSumoSyncClient:
                 # Check that the underlying httpx client's request method was called correctly
                 # The portal.call makes it a bit indirect to check directly on SumoClient's _make_request
                 # So we check the call on the httpx.AsyncClient mock that SumoClient uses.
-                expected_url = f"/rikishi/{TEST_RIKISHI_ID}" # Path relative to client's base_url
+                expected_url = (
+                    f"/rikishi/{TEST_RIKISHI_ID}"  # Path relative to client's base_url
+                )
                 mock_httpx_instance.request.assert_called_once_with(
                     "GET", expected_url, params=None
                 )
 
     def test_sync_get_rikishis_with_params(self, mock_rikishis_response):
         """Test a sync API call with multiple parameters (get_rikishis)."""
-    
+
         # Mock the blocking portal
-        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+        with patch(
+            "anyio.from_thread.start_blocking_portal"
+        ) as mock_start_portal_cm_constructor:
             mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
             mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
             mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
@@ -774,10 +882,11 @@ class TestSumoSyncClient:
                     # If the result is a coroutine, we need to run it
                     if inspect.iscoroutine(result):
                         import asyncio
+
                         return asyncio.get_event_loop().run_until_complete(result)
                     return result
                 return func  # If it's not callable, just return it
-        
+
             mock_actual_portal.call.side_effect = mock_portal_call
 
             # This mock needs to be in place before SumoClient initializes its httpx.AsyncClient
@@ -787,7 +896,9 @@ class TestSumoSyncClient:
                 mock_http_response = AsyncMock()
                 mock_http_response.json = MagicMock(return_value=mock_rikishis_response)
                 mock_http_response.status_code = 200
-                mock_http_response.raise_for_status = MagicMock() # Ensure it doesn't raise
+                mock_http_response.raise_for_status = (
+                    MagicMock()
+                )  # Ensure it doesn't raise
 
                 mock_httpx_instance.request = AsyncMock(return_value=mock_http_response)
 
@@ -797,11 +908,7 @@ class TestSumoSyncClient:
                 # Test with various parameter types (string, int, bool)
                 with SumoSyncClient(base_url="https://sumo-api.com") as client:
                     result = client.get_rikishis(
-                        shikona_en="Test",
-                        sumodb_id=123,
-                        intai=False,
-                        limit=20,
-                        skip=5
+                        shikona_en="Test", sumodb_id=123, intai=False, limit=20, skip=5
                     )
 
                 assert isinstance(result, RikishiList)
@@ -814,18 +921,23 @@ class TestSumoSyncClient:
                 assert call_args[0] == ("GET", "/rikishis")
                 # Check that params were passed (we don't need to verify exact params as that's tested elsewhere)
                 assert "params" in call_args[1]
+
     def test_sync_get_rikishi_no_context_manager(self, mock_rikishi_response):
         """Test calling an API method on SumoSyncClient outside of a 'with' block."""
         # Patch httpx.AsyncClient to prevent actual HTTP calls during SumoClient init
         with patch("pysumoapi.client.httpx.AsyncClient"):
             client = SumoSyncClient(base_url="https://sumo-api.com")
 
-        with pytest.raises(RuntimeError, match="SumoSyncClient must be used as a context manager."):
+        with pytest.raises(
+            RuntimeError, match="SumoSyncClient must be used as a context manager."
+        ):
             client.get_rikishi(str(TEST_RIKISHI_ID))
 
     def test_sync_client_context_manager_exception_handling(self):
         """Test that __aexit__ is called correctly when an exception occurs in the with block."""
-        with patch("anyio.from_thread.start_blocking_portal") as mock_start_portal_cm_constructor:
+        with patch(
+            "anyio.from_thread.start_blocking_portal"
+        ) as mock_start_portal_cm_constructor:
             mock_portal_cm_instance = MagicMock(name="portal_cm_instance")
             mock_actual_portal = MagicMock(name="actual_portal_from_cm_enter")
             mock_portal_cm_instance.__enter__.return_value = mock_actual_portal
@@ -840,18 +952,23 @@ class TestSumoSyncClient:
                     # If the result is a coroutine, we need to run it
                     if inspect.iscoroutine(result):
                         import asyncio
+
                         return asyncio.get_event_loop().run_until_complete(result)
                     return result
                 return func  # If it's not callable, just return it
-            
+
             mock_actual_portal.call.side_effect = mock_portal_call
 
             mock_async_client_actual_instance = AsyncMock()
-            mock_async_client_actual_instance.__aenter__ = AsyncMock(return_value=mock_async_client_actual_instance)
+            mock_async_client_actual_instance.__aenter__ = AsyncMock(
+                return_value=mock_async_client_actual_instance
+            )
             mock_async_client_actual_instance.__aexit__ = AsyncMock()
 
             with patch("pysumoapi.client.SumoClient") as mock_sumo_client_constructor:
-                mock_sumo_client_constructor.return_value = mock_async_client_actual_instance
+                mock_sumo_client_constructor.return_value = (
+                    mock_async_client_actual_instance
+                )
 
                 client = SumoSyncClient(base_url="https://test.com")
 
@@ -859,7 +976,9 @@ class TestSumoSyncClient:
 
                 with pytest.raises(ValueError, match="Test Exception"):
                     with client:
-                        mock_actual_portal.call.assert_any_call(mock_async_client_actual_instance.__aenter__)
+                        mock_actual_portal.call.assert_any_call(
+                            mock_async_client_actual_instance.__aenter__
+                        )
                         raise custom_exception
 
                 # Check that __aexit__ on the async client was called via the actual portal with exception details
@@ -870,8 +989,12 @@ class TestSumoSyncClient:
                     mock_async_client_actual_instance.__aexit__,
                     type(custom_exception),
                     custom_exception,
-                    custom_exception.__traceback__
+                    custom_exception.__traceback__,
                 )
                 # Check that the portal context manager's __exit__ was called with exception details
-                mock_portal_cm_instance.__exit__.assert_called_with(type(custom_exception), custom_exception, custom_exception.__traceback__)
+                mock_portal_cm_instance.__exit__.assert_called_with(
+                    type(custom_exception),
+                    custom_exception,
+                    custom_exception.__traceback__,
+                )
                 assert client._portal is None

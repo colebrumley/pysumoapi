@@ -847,7 +847,7 @@ class TestSumoSyncClient:
                     if inspect.iscoroutine(result):
                         import asyncio
 
-                        return asyncio.get_event_loop().run_until_complete(result)
+                        return asyncio.run(result)
                     return result
                 return func  # If it's not callable, just return it
 
@@ -910,7 +910,7 @@ class TestSumoSyncClient:
                     if inspect.iscoroutine(result):
                         import asyncio
 
-                        return asyncio.get_event_loop().run_until_complete(result)
+                        return asyncio.run(result)
                     return result
                 return func  # If it's not callable, just return it
 
@@ -971,7 +971,7 @@ class TestSumoSyncClient:
                     if inspect.iscoroutine(result):
                         import asyncio
 
-                        return asyncio.get_event_loop().run_until_complete(result)
+                        return asyncio.run(result)
                     return result
                 return func  # If it's not callable, just return it
 
@@ -1041,7 +1041,7 @@ class TestSumoSyncClient:
                     if inspect.iscoroutine(result):
                         import asyncio
 
-                        return asyncio.get_event_loop().run_until_complete(result)
+                        return asyncio.run(result)
                     return result
                 return func  # If it's not callable, just return it
 

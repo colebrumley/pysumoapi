@@ -1,12 +1,11 @@
+import asyncio
+import inspect
+import math
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-import asyncio
 import httpx
-from httpx import AsyncHTTPTransport as _AsyncHTTPTransport
-AsyncHTTPTransport = _AsyncHTTPTransport
-import inspect
-import os
 
 from pysumoapi.models import (
     Banzuke,
@@ -51,8 +50,25 @@ class SumoClient:
             read_timeout: Read timeout in seconds
             enable_http2: Whether to enable HTTP/2 support
             max_retries: Maximum number of retry attempts
-            retry_backoff_factor: Factor for exponential backoff (delay = factor * (2 ** attempt))
+            retry_backoff_factor: Non-negative factor for exponential backoff.
         """
+        if not isinstance(max_retries, int) or isinstance(max_retries, bool):
+            raise TypeError("max_retries must be a non-negative integer")
+        if max_retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        if (
+            isinstance(retry_backoff_factor, bool)
+            or not isinstance(retry_backoff_factor, (int, float))
+            or not math.isfinite(retry_backoff_factor)
+        ):
+            raise TypeError(
+                "retry_backoff_factor must be a finite non-negative number"
+            )
+        if retry_backoff_factor < 0:
+            raise ValueError(
+                "retry_backoff_factor must be a finite non-negative number"
+            )
+
         self.base_url = base_url.rstrip("/")
         self._client: Optional[httpx.AsyncClient] = None
         self.verify_ssl = verify_ssl
@@ -72,15 +88,18 @@ class SumoClient:
                 import certifi
 
                 ssl_context = ssl.create_default_context(cafile=certifi.where())
-                if os.environ.get("SSL_CERT_FILE"):
+                ssl_cert_file = os.environ.get("SSL_CERT_FILE")
+                if ssl_cert_file:
                     try:
-                        ssl_context.load_verify_locations(os.environ["SSL_CERT_FILE"])
-                    except FileNotFoundError:
-                        pass
-            except (ImportError, FileNotFoundError):
+                        ssl_context.load_verify_locations(cafile=ssl_cert_file)
+                    except FileNotFoundError as exc:
+                        raise RuntimeError(
+                            f"SSL_CERT_FILE does not exist: {ssl_cert_file}"
+                        ) from exc
+            except ImportError as exc:
                 raise RuntimeError(
                     "certifi not available; set verify_ssl=False to proceed"
-                )
+                ) from exc
         else:
             ssl_context = False
 
@@ -94,8 +113,6 @@ class SumoClient:
 
         # Configure retry transport
         transport_cls = httpx.AsyncHTTPTransport
-        if AsyncHTTPTransport is not _AsyncHTTPTransport:
-            transport_cls = AsyncHTTPTransport
 
         transport_kwargs = {"retries": self.max_retries}
         if "retry_backoff_factor" in inspect.signature(transport_cls).parameters:
@@ -121,7 +138,6 @@ class SumoClient:
 
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}/api",
-            verify=ssl_context,
             timeout=timeout,
             http2=self.enable_http2,
             transport=transport,

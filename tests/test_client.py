@@ -210,6 +210,20 @@ async def test_sumo_client_default_initialization():
     assert client.retry_backoff_factor == 1.0
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "error", "message"),
+    [
+        ({"max_retries": -1}, ValueError, "max_retries"),
+        ({"max_retries": 1.5}, TypeError, "max_retries"),
+        ({"retry_backoff_factor": -0.1}, ValueError, "retry_backoff_factor"),
+        ({"retry_backoff_factor": float("inf")}, TypeError, "retry_backoff_factor"),
+    ],
+)
+def test_retry_configuration_validation(kwargs, error, message):
+    with pytest.raises(error, match=message):
+        SumoClient(**kwargs)
+
+
 @pytest.mark.asyncio
 async def test_get_rikishi():
     """Test getting a single rikishi."""
@@ -535,6 +549,7 @@ async def test_retry_transport_configuration():
             mock_client_class.assert_called_once()
             call_kwargs = mock_client_class.call_args[1]
             assert call_kwargs["transport"] == mock_transport
+            assert "verify" not in call_kwargs
 
 
 @pytest.mark.asyncio
@@ -552,7 +567,7 @@ async def test_retry_backoff_passed_when_supported():
             self.retries = retries
             self.retry_backoff_factor = retry_backoff_factor
 
-    with patch("pysumoapi.client.AsyncHTTPTransport", new=DummyTransport):
+    with patch("httpx.AsyncHTTPTransport", new=DummyTransport):
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
@@ -608,6 +623,80 @@ async def test_manual_backoff_when_transport_lacks_support():
 
                 assert result == {}
                 mock_sleep.assert_awaited_once_with(0.5)
+
+
+@pytest.mark.asyncio
+async def test_manual_backoff_stops_after_max_retries():
+    with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncHTTPTransport"):
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.request.side_effect = httpx.ConnectError(
+                "fail", request=httpx.Request("GET", "https://test")
+            )
+
+            with patch("asyncio.sleep", new=AsyncMock()) as mock_sleep:
+                client = SumoClient(
+                    max_retries=2, retry_backoff_factor=0.25, verify_ssl=False
+                )
+                async with client:
+                    with pytest.raises(httpx.ConnectError):
+                        await client._make_request("GET", "/test")
+
+                assert mock_client.request.await_count == 3
+                assert [call.args[0] for call in mock_sleep.await_args_list] == [
+                    0.25,
+                    0.5,
+                ]
+
+
+@pytest.mark.asyncio
+async def test_proxy_environment_configures_transport():
+    with patch.dict(
+        "os.environ", {"HTTPS_PROXY": "http://proxy.test:8080"}, clear=True
+    ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            with patch("httpx.AsyncHTTPTransport") as mock_transport_class:
+                mock_client = AsyncMock()
+                mock_client_class.return_value = mock_client
+                mock_client.__aenter__.return_value = mock_client
+
+                async with SumoClient(verify_ssl=False):
+                    pass
+
+                assert mock_transport_class.call_args.kwargs["proxy"] == (
+                    "http://proxy.test:8080"
+                )
+
+
+@pytest.mark.asyncio
+async def test_ssl_cert_file_is_added_to_context(monkeypatch):
+    ssl_context = MagicMock()
+    monkeypatch.setenv("SSL_CERT_FILE", "/tmp/proxy-ca.pem")
+    with patch("ssl.create_default_context", return_value=ssl_context):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
+            mock_client.__aenter__.return_value = mock_client
+
+            async with SumoClient():
+                pass
+
+    ssl_context.load_verify_locations.assert_called_once_with(
+        cafile="/tmp/proxy-ca.pem"
+    )
+
+
+@pytest.mark.asyncio
+async def test_missing_ssl_cert_file_fails_clearly(monkeypatch):
+    ssl_context = MagicMock()
+    ssl_context.load_verify_locations.side_effect = FileNotFoundError
+    monkeypatch.setenv("SSL_CERT_FILE", "/tmp/missing-ca.pem")
+    with patch("ssl.create_default_context", return_value=ssl_context):
+        with pytest.raises(RuntimeError, match="SSL_CERT_FILE does not exist"):
+            async with SumoClient():
+                pass
 
 
 @pytest.mark.asyncio
@@ -701,10 +790,9 @@ async def test_ssl_context_without_certifi_and_verify_false():
             async with client:
                 pass
 
-            # Verify AsyncClient was called with verify=False
+            # SSL verification is configured on the transport.
             mock_client_class.assert_called_once()
-            call_kwargs = mock_client_class.call_args[1]
-            assert call_kwargs["verify"] is False
+            assert mock_transport_class.call_args.kwargs["verify"] is False
 
 
 @pytest.mark.asyncio

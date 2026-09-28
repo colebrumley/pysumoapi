@@ -1,3 +1,7 @@
+import asyncio
+import inspect
+import math
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -46,8 +50,25 @@ class SumoClient:
             read_timeout: Read timeout in seconds
             enable_http2: Whether to enable HTTP/2 support
             max_retries: Maximum number of retry attempts
-            retry_backoff_factor: Factor for exponential backoff (delay = factor * (2 ** attempt))
+            retry_backoff_factor: Non-negative factor for exponential backoff.
         """
+        if not isinstance(max_retries, int) or isinstance(max_retries, bool):
+            raise TypeError("max_retries must be a non-negative integer")
+        if max_retries < 0:
+            raise ValueError("max_retries must be a non-negative integer")
+        if (
+            isinstance(retry_backoff_factor, bool)
+            or not isinstance(retry_backoff_factor, (int, float))
+            or not math.isfinite(retry_backoff_factor)
+        ):
+            raise TypeError(
+                "retry_backoff_factor must be a finite non-negative number"
+            )
+        if retry_backoff_factor < 0:
+            raise ValueError(
+                "retry_backoff_factor must be a finite non-negative number"
+            )
+
         self.base_url = base_url.rstrip("/")
         self._client: Optional[httpx.AsyncClient] = None
         self.verify_ssl = verify_ssl
@@ -67,10 +88,18 @@ class SumoClient:
                 import certifi
 
                 ssl_context = ssl.create_default_context(cafile=certifi.where())
-            except (ImportError, FileNotFoundError):
+                ssl_cert_file = os.environ.get("SSL_CERT_FILE")
+                if ssl_cert_file:
+                    try:
+                        ssl_context.load_verify_locations(cafile=ssl_cert_file)
+                    except FileNotFoundError as exc:
+                        raise RuntimeError(
+                            f"SSL_CERT_FILE does not exist: {ssl_cert_file}"
+                        ) from exc
+            except ImportError as exc:
                 raise RuntimeError(
                     "certifi not available; set verify_ssl=False to proceed"
-                )
+                ) from exc
         else:
             ssl_context = False
 
@@ -83,15 +112,32 @@ class SumoClient:
         )
 
         # Configure retry transport
-        from httpx import AsyncHTTPTransport
+        transport_cls = httpx.AsyncHTTPTransport
 
-        transport = AsyncHTTPTransport(
-            retries=self.max_retries,
+        transport_kwargs = {"retries": self.max_retries}
+        if "retry_backoff_factor" in inspect.signature(transport_cls).parameters:
+            transport_kwargs["retry_backoff_factor"] = self.retry_backoff_factor
+            self._manual_backoff = False
+        else:
+            self._manual_backoff = True
+
+        proxy = (
+            os.environ.get("https_proxy")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("http_proxy")
+            or os.environ.get("HTTP_PROXY")
+        )
+        if proxy:
+            transport_kwargs["proxy"] = proxy
+
+        transport = transport_cls(
+            verify=ssl_context,
+            trust_env=True,
+            **transport_kwargs,
         )
 
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}/api",
-            verify=ssl_context,
             timeout=timeout,
             http2=self.enable_http2,
             transport=transport,
@@ -125,7 +171,21 @@ class SumoClient:
         if not self._client:
             raise RuntimeError("Client must be used as an async context manager")
 
-        response = await self._client.request(method, path, params=params)
+        attempt = 0
+        delay = self.retry_backoff_factor
+        while True:
+            try:
+                response = await self._client.request(method, path, params=params)
+                break
+            except httpx.HTTPError:
+                if (
+                    not getattr(self, "_manual_backoff", False)
+                    or attempt >= self.max_retries
+                ):
+                    raise
+                attempt += 1
+                await asyncio.sleep(delay)
+                delay *= 2
 
         # Handle 404 errors with specific error messages
         if response.status_code == 404:
@@ -657,10 +717,10 @@ class SumoClient:
 
 
 import anyio
-import inspect
 import functools
 import types
-import sys # Add sys import for sys.exc_info()
+import sys  # Add sys import for sys.exc_info()
+
 
 class SumoSyncClient:
     """Synchronous client for interacting with the Sumo API."""
@@ -673,10 +733,15 @@ class SumoSyncClient:
             **kwargs: Keyword arguments to pass to SumoClient
         """
         self._async_client = SumoClient(*args, **kwargs)
-        self._portal_cm = None  # Initialize to None; portal will be created in __enter__
+        self._portal_cm = (
+            None  # Initialize to None; portal will be created in __enter__
+        )
         self._portal = None
 
-        for attr_name, async_method in inspect.getmembers(SumoClient, inspect.iscoroutinefunction):
+        for attr_name, async_method in inspect.getmembers(
+            SumoClient, inspect.iscoroutinefunction
+        ):
+
             def sync_method_factory(method_name, orig_method):
                 @functools.wraps(orig_method)
                 def sync_wrapper(self_sync, *args, **kwargs):
@@ -691,13 +756,15 @@ class SumoSyncClient:
                     # as portal.call itself only accepts *args.
                     partial_func = functools.partial(bound_method, *args, **kwargs)
                     return self_sync._portal.call(partial_func)
+
                 return sync_wrapper
 
             sync_method = sync_method_factory(attr_name, async_method)
             setattr(self, attr_name, types.MethodType(sync_method, self))
+
     def __enter__(self):
         """Enter the runtime context."""
-        if self._portal_cm is None: # Should not happen if __init__ is correct
+        if self._portal_cm is None:  # Should not happen if __init__ is correct
             self._portal_cm = anyio.from_thread.start_blocking_portal()
         self._portal = self._portal_cm.__enter__()
         try:
@@ -705,17 +772,19 @@ class SumoSyncClient:
         except Exception:
             # If __aenter__ fails, make sure to exit the portal_cm as well
             self._portal_cm.__exit__(*sys.exc_info())
-            self._portal = None # Reset portal as it's not properly entered
-            self._portal_cm = None # Reset portal_cm as it's exited
+            self._portal = None  # Reset portal as it's not properly entered
+            self._portal_cm = None  # Reset portal_cm as it's exited
             raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit the runtime context."""
-        if self._portal: # Check if portal was successfully obtained in __enter__
+        if self._portal:  # Check if portal was successfully obtained in __enter__
             try:
-                self._portal.call(self._async_client.__aexit__, exc_type, exc_val, exc_tb)
-            finally: # Ensure portal_cm.__exit__ is called even if the above line fails
+                self._portal.call(
+                    self._async_client.__aexit__, exc_type, exc_val, exc_tb
+                )
+            finally:  # Ensure portal_cm.__exit__ is called even if the above line fails
                 if self._portal_cm:
                     self._portal_cm.__exit__(exc_type, exc_val, exc_tb)
                 self._portal = None
